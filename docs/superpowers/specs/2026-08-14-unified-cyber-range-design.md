@@ -431,20 +431,95 @@ explicitly not the goal; expensive sources are opt-in demonstrations.
 
 ### 7.5 Application and infrastructure
 
-Per-service verbose logging beyond defaults — nginx/IIS access, Squid proxy (what an
-analyst gets for TLS traffic that Zeek's `http.log` cannot give), Postfix/Dovecot, MSSQL
-audit specification, Samba `full_audit` scoped to `rename`/`unlink`, vsftpd, BIND query
-logging, DHCP leases, CUPS, backup jobs, OPNsense filter/flow/VPN.
+This is the noisy middle layer where much real hunting happens, and where the highest
+proportion of value sits behind non-default settings.
 
-*(Research stream still in flight at time of writing; this section is completed on its
-return.)*
+| Service | Enable beyond defaults | Answers what the wire cannot |
+|---|---|---|
+| nginx | JSON `log_format … escape=json` with `$request_id`, `$upstream_*`, `$ssl_*`, XFF | URI, query string, and status inside TLS-terminated HTTPS; which backend served the attack |
+| IIS | add `BytesSent`/`BytesRecv`/`Host`; Custom Fields for `X-Forwarded-For`; collect `httperr` | ProxyShell is literally a grep over `cs-uri-query`; requests HTTP.sys rejected before IIS ever logged them |
+| **Squid** | `logformat extensive` (one of only two formats Elastic parses); `ssl_bump peek step1; splice all` | **Authenticated username on every CONNECT** — turns "an IP beaconed" into "alice's workstation beaconed". Plus the policy verdict, and bytes-in for exfil |
+| Postfix | `maillog_file` **and `maillog_file_permissions=0644`**; `smtpd_tls_loglevel=1`; `header_checks` with `WARN` | Phish reconstruction by chaining queue ID across four daemons; SASL spray on 587/465 |
+| Dovecot | **`auth_verbose=yes`**; `auth_verbose_passwords=sha1:8`; centralize `sieve_user_log` | IMAP spray; mailbox mass-download via session byte counts; Sieve forwarding-rule abuse (the canonical BEC persistence) |
+| MariaDB | `server_audit` with `events=CONNECT,QUERY,TABLE`; raise `query_log_limit` from 1024 | SQLi payload text on a TLS'd app-to-DB connection; `INTO OUTFILE`; privilege escalation |
+| MSSQL | Server + database audit specs → **SECURITY_LOG** | `xp_cmdshell` enable-and-execute; linked-server pivot; backup to an attacker share |
+| Samba | `vfs_full_audit` scoped to `connect openat create_file renameat unlinkat fset_nt_acl` | SMB3 encryption hides filenames from the sensor entirely — the file server is the only place they exist |
+| Windows SMB | *File Share* + *Detailed File Share* (no SACLs needed); *File System* + SACLs on decoys | 4663 has the process and full path; 5145 has the client IP and the per-right decision. Both, or neither is complete |
+| vsftpd | `dual_log_enable=YES`, `xferlog_std_format=NO`, `log_ftp_protocol=YES` | Once FTPS is on, Zeek's analyzer is blind to usernames, filenames, and commands |
+| BIND / dnsmasq | `category queries`+`rpz`+`spill`; dnsmasq `log-queries=extra` and `log-async` | **Client attribution.** A sensor north of the resolver attributes every malicious lookup to the resolver's own IP |
+| Kea DHCP | `libdhcp_legal_log` (free, in base Kea) | IP↔MAC↔hostname↔time — the enabler for every other log. Option 82 gives switch-port attribution |
+| CUPS / Windows Print | `LogLevel info`, `AccessLogLevel all`, **`PageLogFormat`** (empty by default = off); enable `PrintService/Operational` | Exfil-by-printing with job name and page count; PrintNightmare 808 (attempt) → 316 (driver actually loaded) |
+| Backup | 4688-with-command-line or Sysmon 1; script-block logging | `vssadmin resize shadowstorage /MaxSize=` — evicts every shadow copy without ever using the word "delete", evading naive rules |
+| OPNsense | per-rule logging (off by default); log default-block; syslog target over TCP | Blocked-connection evidence, NAT-edge attribution, rule → policy intent, VPN auth |
 
-**Syslog transport trade-off, learned in lab-env:** encrypting syslog removes its content
-from the network sensor while preserving it at the endpoint. The range runs both — a
-TLS-encrypted tier and a cleartext tier — so the trade-off is visible rather than
-accidental.
+**Engineering cost to budget explicitly:** nine of these services have **no Elastic
+integration** — Postfix, Dovecot, vsftpd, CUPS, Samba, BIND, dnsmasq, Kea, and Veeam.
+Each needs a hand-written Elasticsearch ingest pipeline. Logstash does not parse in this
+stack; all field extraction happens in ingest pipelines. This is the largest hidden cost
+in the whole telemetry contract.
 
-### 7.6 Encryption mix
+Two database choices follow from licensing: **MariaDB rather than MySQL Community**,
+because `server_audit` is free and in the base product while MySQL Community has no
+usable audit plugin at all. And **MSSQL audit must target SECURITY_LOG** — FILE is the
+most secure but Elastic's integration is event-log-only and cannot read it, while
+APPLICATION_LOG is readable by any authenticated user, which is a log-injection surface.
+
+**The single highest-value dashboard panel in the stack:** egress connections in Zeek's
+`conn.log` with no matching Squid record. Proxy bypass is deliberate evasion, and this
+correlation costs nothing to build.
+
+### 7.6 Syslog transport — a deliberate split
+
+Encrypting syslog removes its content from the network sensor while preserving it at the
+endpoint. That is the right production answer and the wrong teaching default, so the
+range runs both.
+
+**Default: plaintext RFC 5424 over TCP on an isolated management VLAN.** This gives a
+third vantage point — the same event visible in the host's own file, in Zeek's
+`syslog.log`, and as a parsed document in Kibana — and triangulating across the three is
+the most valuable single exercise a log-source curriculum can offer. The isolation is
+explicit, and the spec says out loud that this is not the production answer.
+
+**Plus one deliberately TLS-encrypted path**, ideally from a domain controller or jump
+host. Students run the identical hunt, find `syslog.log` empty, and rebuild the detection
+from `conn.log`, `ssl.log`, and byte volume alone.
+
+A nuance worth building in: **encryption without authentication does not stop spoofing.**
+An anonymous TLS listener encrypts (and so blinds the sensor) while authenticating
+nobody — anyone can open a session and inject. Only certificate-based auth buys the
+anti-spoofing property, which makes a clean two-part lab.
+
+This also sets up the loss-of-telemetry exercises, which map to ATT&CK T1562.006:
+stopping the forwarder, firewalling the collector (the host still believes it is
+logging — the best teaching moment of the set), repointing to an attacker collector,
+raising the severity filter above the heartbeat, and flooding high-severity messages so
+the collector's own discard policy drops genuine telemetry. Detection needs four layers:
+heartbeats on their own facility, RFC 5424 sequence IDs, **per-data-source** last-seen
+rather than per-host, and network-side corroboration from `conn.log` — which works
+identically under TLS and is independent of the collector entirely.
+
+### 7.7 Defaults that silently collect nothing
+
+Each of these produces a healthy-looking configuration and an empty index. They are
+called out here because every one of them has to be actively set.
+
+1. Security Onion must be **Standalone or Distributed** — Evaluation and Import cannot
+   receive agent-forwarded logs at all.
+2. **Debian 12 has no `/var/log/mail.log`, `/var/log/syslog`, or `/var/log/auth.log`.**
+3. Postfix `maillog_file_permissions` defaults to **0600** — a non-root agent reads nothing.
+4. Dovecot **`auth_verbose` defaults to `no`** — no brute-force visibility whatsoever.
+5. CUPS **`PageLogFormat` defaults to empty** — page logging is entirely off.
+6. Windows **`PrintService/Operational` is disabled** — you get the PrintNightmare attempt
+   but never the success.
+7. vsftpd **`log_ftp_protocol` is silently ignored** when `xferlog_std_format=YES`.
+8. Windows **4688 has no command line** without the second policy setting.
+9. Squid must use the `squid` or `extensive` format or the pipeline grok-fails outright.
+10. The OPNsense integration **discards unmatched logs** without reporting it.
+11. Samba's audit operation names changed (`mkdirat`, `renameat`, `unlinkat`, `openat`) —
+    an invalid name makes the module fail to load, which presents as shares refusing to
+    mount rather than as a logging error.
+
+### 7.8 Encryption mix
 
 Target **85–95% of external traffic encrypted** and a meaningful minority of internal
 traffic too (LDAPS, SMB signing, RDP TLS, internal HTTPS). But not 100%: a range where
@@ -625,7 +700,7 @@ Each phase is independently useful and independently verifiable.
 | 3 | Noise engine: every Zeek log type the contract names actually exists |
 | 4 | Security Onion 3.0 rebuilt, lean profile, separate `/nsm` disk, range mirror bridge |
 | 5 | Gold images + acceptance gate; VM edition rendered; AD live |
-| 6 | Full telemetry contract deployed; Gates 0–2 passing |
+| 6 | Full telemetry contract deployed, including the nine custom ingest pipelines (Postfix, Dovecot, vsftpd, CUPS, Samba, BIND, dnsmasq, Kea, Veeam); Gates 0–2 passing |
 | 7 | Attack platform: pivot, rotation, Sliver, Caldera; Gates 3–4 passing |
 | 8 | First end-to-end exercise, scored against the difficulty bands |
 
@@ -650,6 +725,13 @@ Carried from research, to be resolved empirically before the phases that depend 
    its role model is worth adopting for `render/pve` rather than building from scratch.
 7. JA4+ is under the FoxIO License 1.1: permissive for internal and academic use, not for
    monetization. Fine for personal practice; needs review if this ever ships commercially.
+8. Does Zeek's syslog analyzer parse TCP on the sensor image we build? Older Zeek shipped
+   it UDP-only, which would silently break the plaintext-syslog teaching path.
+9. Measure — do not assume — the throughput cost of MariaDB `server_audit`, MSSQL audit,
+   and Windows 5145 auditing on this hardware. Every published figure found was an
+   estimate.
+10. Does the pf filter log carry any pre/post-NAT correlation field, or must both sides be
+    joined on destination, ports, and time?
 
 ---
 
