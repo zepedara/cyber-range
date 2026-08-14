@@ -1,0 +1,37 @@
+# site-specific configuration — real hostnames, addresses, credentials
+site.env
+*.local.yaml
+
+# secrets and key material
+*.key
+*.keytab
+*.pem
+*.p12
+secrets.tdb
+*.env
+!*.env.example
+
+# captures and evidence
+*.pcap
+*.pcapng
+*.evtx
+*.etl
+
+# build artifacts
+images/**/artifacts/
+images/**/isos/
+*.iso
+*.qcow2
+*.vmdk
+*.raw
+
+# measurement output
+measure/results/
+hunt-results.tsv
+evidence.json
+demand.json
+unfireable.csv
+
+# editor / OS
+.DS_Store
+*.swp
