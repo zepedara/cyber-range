@@ -36,11 +36,23 @@ Settled with the owner before design:
 | 3 | Hunt surface | All four tiers: network, endpoint process, identity/auth, application |
 | 4 | Domain rotation | Shared pool, per-exercise rotation |
 | 5 | Attack engine | Live C2 + ATT&CK emulation (no PCAP replay) |
-| 6 | Analysis stack | Security Onion / Kibana, Elastic Agent for endpoint, Velociraptor for forensics |
-| 7 | Sensor version | Build for Security Onion 3.0, sensor-agnostic |
+| 6 | **Locked tool stack** | **Security Onion / Kibana as SIEM, Elastic Agent + Elastic Defend as EDR, Velociraptor for forensics — all three are training requirements, not implementation choices** |
+| 7 | Sensor version | Security Onion **3.2**, greenfield install on Oracle Linux 9 |
 | 8 | Architecture | One enterprise, two renderings, shared identity plane |
-| 9 | Container kernel | Dedicated container-host VM, not the hypervisor |
+| 9 | Container kernel | Dedicated container-host VM running **Incus**, not the hypervisor |
 | 10 | Repo visibility | Public — therefore no real fleet addressing in committed files |
+| 11 | Velociraptor model | **Analysis station only.** No clients on endpoints; acquisition via offline collectors |
+| 12 | Windows client OS | **Windows 10 Enterprise LTSC 2021** — not IoT, which Elastic Defend does not support |
+| 13 | Workstation count | Six, running concurrently, gated on measured KSM reclaim |
+| 14 | rick | Stripped to headless, 32 GB → 8 GB, freeing 24 GB for the range |
+
+### 2.1 What "meaningful implementation" means here
+
+The three locked tools are not boxes to tick. The range is finished when an analyst can
+complete a whole workflow across all three: **detect in Kibana → triage with Elastic
+Defend's process telemetry → decide the host warrants examination → run an offline
+collector → import into Velociraptor → timeline and prove it.** Every exercise in §9.2 is
+designed so the SIEM alone is insufficient, the EDR narrows it, and Velociraptor proves it.
 
 ---
 
@@ -109,26 +121,43 @@ Six VMs were shut down to free capacity (`flare-vm`, `remnux`, `sift-ws`, and th
 
 ### 4.2 Budget
 
-| Component | GB |
-|---|---|
-| `rick` (VM 100) — off limits | 32 |
-| ZFS ARC + host | 11 |
-| Security Onion (lean profile) | 32 |
-| Velociraptor | 4 |
-| operator01 (ex-`kali`) | 3 |
-| **Range** | **~43** |
+`rick` (VM 100) was measured using **8 GB of its 32 GB allocation**, of which 4 GB was a
+GNOME desktop with no remote viewer attached. Stripping it to headless and reallocating
+frees 24 GB. All of rick's services stay — graphify, ntfy, qdrant, SearxNG, RustDesk,
+immudb, ollama on the 4090 — since together they use under 3 GB.
+
+| Component | GB | Note |
+|---|---|---|
+| `rick`, stripped headless | 8 | was 32 |
+| ZFS ARC (capped explicitly) | 4 | was 8 |
+| Host / PVE | 3 | |
+| **Security Onion 3.2** | **48** | grown to match the larger estate |
+| Velociraptor analysis station | 4 | |
+| operator01 (ex-`kali`) | 3 | |
+| **Range** | **~55** | |
 
 Range allocation:
 
 | Component | GB |
 |---|---|
-| Container-host VM + ~45 containers | 12 |
-| dc01, dc02 (Server Core) | 4.5 |
-| fs01, sql01 (Server Core) | 5 |
-| wk01–wk06 (Win11 LTSC linked clones, KSM-shared) | 18 |
+| Container-host VM + ~70 containers | 18 |
+| dc01, dc02 (Server Core) | 6 |
+| fs01 (Server Core) | 3 |
+| sql01 (Server Core + MSSQL) | 5 |
+| wk01–wk06 (Win10 LTSC linked clones) | 24 nominal → **~17 with KSM** |
 | pivot01 (Debian minimal) | 1.5 |
 | fw01 (OPNsense) | 1.5 |
-| **Total** | **42.5** |
+| **Total** | **~52 effective** |
+
+**KSM is load-bearing and is currently switched off.** There is no `/etc/ksmtuned.conf`
+on the host, `ksmtuned` is inactive, and `/sys/kernel/mm/ksm/run` is `0`. The kernel does
+have the newer in-kernel advisor available (`smart_scan=1`, `advisor_mode` present), which
+supersedes the old userspace daemon and is the right mechanism to use.
+
+**Acceptance gate:** after the six workstation clones are running, measure
+`pages_sharing × 4096` and require **≥25% reclaim across the Windows tier**. If it
+under-delivers, power down two workstations. Nothing about the build changes — only how
+many are powered.
 
 ### 4.3 VM repurposing map
 
@@ -141,26 +170,65 @@ Existing VMs are renamed and re-provisioned rather than built fresh.
 | `range-FS01` (151) | **fs01** — file server |
 | `range-SQL01` (152) | **sql01** — MSSQL + audit |
 | `range-WS01/WS02` (154/155) | **wk01, wk02** |
-| `irtest-win10ent` (3010) | **wk03** (Win10 LTSC) |
-| `irtest-win11ent` (3011) | **wk04** (Win11 LTSC) |
+| `irtest-win10ent` (3010) | **wk03** — has 21 GB of installed content, reusable |
+| `irtest-win11ent` (3011) | **wk04** — disk is 112 KB, never installed; rebuild |
 | `redinfra01` (210) | **pivot01** — attack platform |
 | `sandbox01` (130) | **fw01** — OPNsense |
 | `kali` (146) | **operator01** — Sliver + Caldera console |
 | `dfir-ws` (141) | **analyst01** — the hunting workstation |
+| `velociraptor01` (102) | **velo01** — analysis station, standalone GUI mode |
 | new | **cthost01** — container-host VM |
-| new | **wk05, wk06** — linked clones of the wk gold image |
+| new | **wk05, wk06** — linked clones of the gold image |
 
-Untouched: `rick` (VM 100), `soc-securityonion` (170), `velociraptor01` (102).
+Untouched: `soc-securityonion` (170). `rick` (VM 100) is stripped, not repurposed.
+
+**Verified 2026-08-14:** all six `range-*` VMs carry real installed disks (11.6–28.4 GB
+allocated) with seed ISOs indicating an automated unattend build, so these are genuine
+repurposes. Windows media is already on the host — `winsrv2022-eval.iso`,
+`win11-ent-eval-25h2.iso`, `win10.iso`, `virtio-win.iso` — all evaluation editions. The
+workstation tier needs **Windows 10 Enterprise LTSC 2021** media, which is not present and
+must be sourced.
 
 ### 4.4 The container-host VM
 
 Containers cannot produce syscall telemetry (§7.3). That telemetry must come from the
 kernel they run on — which must not be the hypervisor.
 
-`cthost01` is a Debian VM running the ~45 range containers, with `auditd` and Falco
-instrumenting its own kernel. This gives full syscall coverage of the container estate
-with clean per-container attribution, leaves cthuwu completely uninstrumented, and makes
-migration to the larger host a matter of moving one VM.
+**Why not the hypervisor, concretely.** `auditd` is not installed on cthuwu and `audit=1`
+is not on its kernel command line, so instrumenting it requires a cmdline change and a
+**reboot of a host with no out-of-band recovery**. Worse, auditd's backlog limit defaults
+to 64 records and on overflow the kernel puts the *generating process* into uninterruptible
+sleep for up to 60 seconds — on a hypervisor those processes are `qemu-system-x86_64`,
+`pvedaemon`, and `corosync`. Red Hat's bug for this is closed WONTFIX.
+
+`cthost01` is a **Debian 13** VM (kernel 6.12, newer than the hypervisor's 6.8) running the
+container estate under **Incus**, with Falco and a narrow auditd instrumenting its own
+kernel.
+
+**Incus rather than Proxmox's native containers**, for one decisive reason:
+`security.idmap.isolated=true` assigns every container a unique, non-overlapping UID range,
+which makes **the UID already inside each audit record the container identifier** — no
+`/proc` lookup, no race with process exit, works for processes that died microseconds ago.
+Proxmox's default places every unprivileged container at the same UID base, so the UID
+identifies nothing.
+
+**Falco is the primary sensor; auditd is a narrow secondary.** The distinction is
+architectural: Falco ships *rule matches*, auditd ships *raw records* — same detection
+fidelity, three orders of magnitude difference in output. Falco measures 76.5 MB resident
+at ~3,000 events/second. auditd is scoped only to what Falco cannot provide: the login UID
+that survives `su`/`sudo`, and roughly fifteen config-file watches.
+
+**Zero agents inside the containers.** Elastic Agent's measured baseline is 220–280 MB;
+seventy of those would consume the entire container tier on log shipping alone. The
+container host reads each container's journal and logs directly from its root filesystem
+and runs file-integrity watches host-side. This also places the collector **outside the
+blast radius** — an attacker who owns a container cannot kill an agent that isn't there.
+
+**Host prerequisites verified 2026-08-14:** BTF present (CO-RE eBPF viable), cgroup v2,
+nested virtualization enabled, `debian-13-standard` template available, inotify limits
+already at 4,194,304 watches. One trap confirmed present: **`kernel.keys.maxkeys` is 2000**,
+which is the setting that makes containers silently fail to start at around forty. It must
+be raised before the container tier is built.
 
 Container-to-VMID-to-hostname enrichment is built in Elasticsearch on day one, sourced
 from the container host's own config. Retrofitting it across 45 containers of historical
@@ -531,6 +599,247 @@ dark and have to adapt.
 
 ---
 
+## 7A. The locked tool stack — implementation
+
+### 7A.1 Security Onion 3.2
+
+Greenfield install from ISO onto Oracle Linux 9, **Standalone** node type, 48 GB.
+Standalone is the floor: Evaluation and Import modes do not run Logstash, and Elastic
+Agents from other hosts require it — agents on those modes silently do not work.
+
+Nearly every reported problem with 3.x lives in the `soup` upgrade path, which a greenfield
+install skips entirely. Hardware requirements are byte-identical between 2.4 and 3.x, so
+the version choice costs no RAM.
+
+**Pin before ingest ramps:**
+
+| Setting | Value | Why |
+|---|---|---|
+| `Elasticsearch.esheap` | 8 GB | the 33% default would take ~16 GB on a 48 GB box |
+| Logstash heap | 2 GB | |
+| `redis_maxmemory` | 2048 | absorbs bursty exercise traffic; default is a fixed 812 MB |
+| `suricata.pcap.conditional` | `alerts` | full capture is ~540 GB/day at 50 Mbps |
+| `suricata.pcap.compression` | `lz4` | |
+
+Un-exclude from Elastic ingest: `capture_loss`, `stats`, `known_hosts`, `known_services`.
+The first two are how an analyst checks for packet loss — excluded by default, so hunting
+for loss in Kibana finds nothing and wrongly concludes there is none.
+
+Enable **BZAR** (MITRE's ATT&CK-mapped SMB/DCE-RPC package) — it ships with Security Onion
+and is disabled by default. Install **JA4+** for JA4SSH, which detects reverse shells inside
+encrypted SSH. Note JA4+ is FoxIO License 1.1: fine for personal and academic use, not for
+monetization.
+
+**Operational gotcha:** custom Elasticsearch ingest pipelines under
+`/opt/so/saltstack/local/salt/` do **not** trigger auto state apply. Each of the nine
+custom pipelines needs a manual `salt state.apply` after every edit.
+
+**Documentation caveat:** the 3.x docs live at `docs.securityonion.net/en/3/main/`, not at a
+version-numbered path. Version-specific URLs 404 and the docs repo has no 3.x branch, so
+some 2.4 documentation is still the only reference for unchanged subsystems.
+
+### 7A.2 Elastic Agent + Elastic Defend
+
+**The licensing boundary, stated plainly.** Basic (free) provides **100% of Defend's
+telemetry** — every event category on every OS, `logs-endpoint.events.*`, `process.Ext.*`,
+process ancestry — plus malware protection and all prebuilt detection rules. It provides
+**none of the response surface**: host isolation is Platinum; the response console and
+every response action are Enterprise.
+
+There is one **30-day self-managed trial per major version**. Spend it deliberately, on a
+concentrated block of response training once a repeatable attack chain exists — not on day
+one. A major-version stack upgrade legitimately opens a second window.
+
+**Policy: reverse the defaults Elastic tuned for enterprise data-volume economics.**
+
+| Setting | Default | Set to | Why |
+|---|---|---|---|
+| `capture_command_line` | **off** | on | silently blinds every rule matching `process.args` |
+| `process_ancestry_length` | 5 | 20 | cut from 20 in 8.15 for volume reasons |
+| `ancestry_in_all_events` | off | on | |
+| `linux.advanced.events.enable_caps` | **off since 8.14** | on | Linux privilege-escalation rules need it |
+| `diagnostic.enabled` | on | off | |
+| `utilization_limits.cpu` | — | 20–30% | |
+| network dedup / process aggregation | on | **off on one victim host** | so beacon cadence survives for the rotating-pivot exercises |
+
+Domain controllers additionally restore registry fidelity
+(`disable_registry_write_suppression=true`, `enforce_registry_filters=false`).
+
+**Defend and Sysmon are two parallel telemetry planes, not one.** Verified in Elastic's
+ingest pipeline source: Sysmon's `process.entity_id` is the raw ProcessGuid while Defend
+computes its own. **They never join** — correlation is on host, PID, and time. Run Defend
+wide and narrow Sysmon to its complement: drop image-load and network-connect hard, keep
+process-access, named pipes, WMI, and process-tampering wide.
+
+Defend's `process.Ext.effective_parent` resolves the *logical* parent through COM and
+svchost brokering, where Sysmon's literal `ParentProcessGuid` is wrong. That is a genuine
+capability gap Sysmon cannot close.
+
+**~390 of Elastic's prebuilt rules cannot fire without Defend** (measured from a clone of
+`elastic/detection-rules`; 948 declare the endpoint integration). That is the concrete
+answer to what running it buys.
+
+**Fleet notes:** Security Onion's highstate reloads its own integration policies over
+`endpoints-initial`, so role policies must be created as *new* policies rather than edits.
+Snapshot and revert work cleanly because agent identity lives in `fleet.enc` and travels
+with the snapshot; the failure modes are unenrolling between snapshot and revert, and
+cloning rather than reverting.
+
+**Verify locally:** whether Security Onion's own Sysmon pipeline populates
+`process.entity_id` at all. It uses its own parser rather than Elastic's, and the answer
+determines whether Sigma-derived and Elastic-derived content share field names.
+
+### 7A.3 Velociraptor — analysis station
+
+**No clients on endpoints.** Velociraptor runs standalone on one VM and is used to analyse
+collections that an analyst deliberately acquires.
+
+Deployment is a single binary: `velociraptor gui --datastore /srv/velo-case --noclient`.
+No server package, no fleet. 6 GB RAM is ample; **150–300 GB of disk on its own volume** is
+the resource that actually matters.
+
+**Pre-load** `Server.Import.Extras` (six bundles including the Triage bundle carrying
+`Windows.KapeFiles.Targets`, `Windows.Triage.Targets`, `Linux.Triage.UAC`, plus Registry
+Hunter, SQLite Hunter, and Sigma) and `Server.Import.DetectRaptor`, then
+`Server.Utils.UploadTools` to materialize tool binaries — including the release binaries the
+collector builder itself needs.
+
+**Acquisition** is by **Generic Collector** — an unmodified signed binary plus a separate
+config, run on the target. Set `opt_cpu_limit` explicitly, write output to a non-evidence
+volume or straight to an SMB drop, and skip full memory acquisition. Rebuild collectors
+after every server upgrade.
+
+**Import with an explicit `ClientId` every time.** Range hostname collisions are guaranteed
+across linked clones, and the default import path will merge unrelated hosts.
+
+**Integration with Security Onion — push, never patch.** Use the built-in
+`Elastic.Flows.Upload` artifact to write a curated allow-list of artifacts into Security
+Onion's Elasticsearch from the Velociraptor side. This leaves **zero footprint inside the
+Security Onion grid**, so `soup` has nothing of ours to break — the inverse of every
+integration that patches nginx or Salt.
+
+- Set `ArtifactNameRegex` to an explicit allow-list, **never the default `.`** — a firehose
+  produces mapping conflicts and silent drops.
+- **Never route Windows Event Log artifacts through it.** The artifact documents that it is
+  unsuitable, because EventData's shape varies and Elasticsearch needs a stable schema.
+- Do the ECS mapping in an **Elasticsearch ingest pipeline**, not in VQL — editing a
+  built-in artifact shadows it with a custom copy that drifts from upstream on every upgrade.
+- **`host.id = ClientId` is the load-bearing join.** Do *not* map `ClientId` to `agent.id`;
+  it collides with the Elastic Agent's own.
+- **`timestamp` is upload time, not event time.** Fix `@timestamp` in the ingest pipeline
+  from the artifact-specific field, or every timeline in Kibana is wrong.
+
+**Do not use `weslambert/securityonion-velociraptor`** — last commit 2022, open issues
+confirming it is broken on current versions, and it overwrites firewall and Filebeat files
+that `soup` then clobbers. Security Onion never shipped Velociraptor and does not now.
+
+**Verify:** whether an imported collection fires `System.Flow.Completion`, which is what
+`Elastic.Flows.Upload` watches. If it does not, drive the upload from a notebook cell
+instead — which is arguably better for training anyway, since the analyst then *chooses* to
+publish a finding to the SIEM.
+
+**Coexistence:** the offline collector does raw physical-drive and process-memory access —
+exactly what an EDR flags. Add the collector binary to Elastic Defend as a Trusted
+Application scoped by signer and path, and add a narrow Defender exclusion for that binary
+only. **Deliberately do not exclude it from Sysmon** — those raw-access and process-access
+events are ground truth, and teaching an analyst to distinguish "the DFIR tool did this"
+from "the adversary did this" is a feature of the range.
+
+---
+
+## 7B. Implementation status — 2026-08-15
+
+What is actually live, measured rather than assumed. Doc counts are point-in-time.
+
+### 7B.1 Live telemetry
+
+| Source | Dataset | State |
+|---|---|---|
+| Zeek | `zeek.*` (19 protocol types) | live |
+| Zeek capture health | `zeek.capture_loss`, `known_hosts`, `known_services`, `known_certs` | live — pipelines authored here, SO ships none |
+| Suricata alerts | `suricata.alert` | ~110k |
+| Suricata anomaly | `suricata.anomaly` | live — pipeline authored here |
+| auditd (all 32 containers) | `auditd.log` | ~89k, 208 rules |
+| Falco | `falco.alerts_agent` | live, modern eBPF |
+| Container journals ×32 | `journald.container` | ~53k |
+| Hypervisor syslog | `syslog` | cthuwu + l3e7 |
+| Elastic Defend | `endpoint.events.*` | file/process/network |
+
+### 7B.2 The filename *is* the pipeline name
+
+The single most costly mechanism to not know. The Zeek filestream integration dissects
+`/nsm/zeek/logs/current/%{pipeline}.log` and sets `@metadata.pipeline = "zeek." + pipeline`;
+Logstash passes it through untouched as the Elasticsearch ingest pipeline. Suricata is the
+same shape via `suricata.{{event.dataset}}`.
+
+The consequence: **a log with no matching ingest pipeline is shipped and then rejected.**
+It is not dropped at the sensor, and nothing in the agent looks unhealthy. SO ships 124
+Zeek pipelines and 21 Suricata pipelines; anything outside those sets needs one written
+first. Five Zeek pipelines and one Suricata pipeline were authored here for exactly this
+reason. Logstash parses nothing and drops nothing — do not go looking there.
+
+### 7B.3 Additions to §7.7 — more defaults that silently collect nothing
+
+12. **Zeek's `exclude_files` regex** drops `capture_loss`, `stats`, `known_hosts`,
+    `known_services`, `known_certs`, `ntp` and `ocsp` before Elastic ever sees them. An
+    analyst checking Kibana for packet loss finds nothing and concludes there is none.
+13. **Suricata runs alert-only.** `eve-log.types` ships as `[alert]`. No anomaly records at
+    all, so protocol violations and evasion are invisible.
+14. **BZAR ships installed but unloaded**, and is Windows-oriented: against Linux Samba
+    there is no `C$`/`ADMIN$`, so T1021.002 cannot fire regardless.
+15. **JA4+ ships disabled by licence.** Only BSD-licensed `JA4` (TLS client) is on;
+    `JA4S/JA4H/JA4SSH/JA4X/JA4L/JA4T/JA4D` are all `F` pending FoxIO License 1.1.
+16. **Zeek discards packets with invalid checksums by default.** On a virtual SPAN feed
+    that is most of them — see 7B.4.
+17. **Container journals attribute to the host.** `add_host_metadata` overwrites
+    `host.hostname`, so all 32 containers appear as `cthost01` until the real value is
+    copied aside at input level.
+18. **Proxmox 9 ships journald-only** — no rsyslog, and `ForwardToSyslog` must be set or a
+    newly installed rsyslog forwards an empty stream while looking healthy.
+
+### 7B.4 Checksum offloading is the SPAN killer
+
+`capture_loss` reported 21–48% loss while every other measurement said the packets arrived:
+NIC `drop=0`/`errs=0` across 1.8M packets, `ethtool rx_drops=0`, workers at 1.6% CPU, and a
+synchronized VXLAN sample of 131 sent / 131 received. Zeek's own `reporter.log` gave the
+answer — invalid TCP checksums from NIC offloading, and *"packets with invalid checksums
+are discarded by Zeek"*. With virtio NICs and `tc`-mirrored traffic the checksum is not
+computed until the physical NIC, so every mirrored copy looks invalid.
+
+Fix: `redef ignore_checksums = T;`. Checksum validation belongs to the endpoints; a mirror
+sensor's job is to analyse what was transmitted. **Any virtual SPAN needs this set.**
+
+### 7B.5 Salt merge semantics decide whether you destroy the config
+
+`pillar.get(..., merge=True)` merges dicts recursively but **replaces lists wholesale**.
+Consequences, both encountered:
+
+- `zeek:config:local:load` is a **list** → adding `bzar` means restating all 48 shipped
+  entries, or `ja3`/`ja4`/`hassh`/`intel`/`icsnpp`/... are silently dropped.
+- `suricata:config:outputs:eve-log:types` is a **dict** (the jinja does `.types.items()`
+  and converts back to a list for the rendered YAML) → adding `anomaly` must *not* restate
+  `alert`, and writing a list breaks the template outright.
+
+Check which one you are editing before writing. Same file, opposite rules.
+
+### 7B.6 Deliberate non-choices
+
+- **KSM** — measured 0 MB on cthuwu, 106 MB on l3e7 against a ≥25% gate. Containers already
+  share page cache through one kernel; there is little anonymous memory to dedupe. Not
+  enabled.
+- **abuse.ch ThreatFox** — 80,697 IOC rules / 31 MB. Roughly doubles the ruleset for
+  signatures that will not fire on synthetic isolated traffic.
+- **An agent per container** — ~150 MB × 32 ≈ 4.8 GB. Replaced by one host-side journald
+  input reading all 32 journals directly.
+- **An agent per hypervisor** — replaced by rsyslog to the syslog listener SO already runs.
+- **JA4+ beyond BSD JA4** — a licence acceptance, and therefore the operator's decision.
+
+### 7B.7 Elasticsearch heap
+
+13.2 GB configured, 2.5 GB in use. If memory is ever tight, this is where it is — not KSM.
+
+---
+
 ## 8. Attack platform
 
 ### 8.1 Pivot and rotation
@@ -612,6 +921,83 @@ Carried directly from lab-env, which got this right:
 
 Plus lab-env's hard-won timing rule: malicious share is a property of the *hunt window*,
 not the exercise. Run exercises 30–45 minutes before hunting.
+
+### 9.2 The three-tool analyst workflow
+
+This is the range's actual product. Every exercise is built so that no single tool is
+sufficient.
+
+```
+1. DETECT      Kibana — an alert fires, or a hunt query surfaces an anomaly.
+                 Sigma/ET rule, rare-destination analysis, beacon cadence,
+                 JA4 fingerprint, unexpected authentication.
+                          │
+2. TRIAGE      Elastic Defend — what did the process actually do?
+                 Full ancestry (depth 20), command line, effective parent
+                 through COM/svchost brokering, token and logon-session
+                 fields inline, network and file events from the same host.
+                 Decide: benign, or does this host warrant examination?
+                          │
+3. ACQUIRE     A deliberate analyst decision, not a background stream.
+                 Build/run a Velociraptor offline collector on that host.
+                 Targeted triage profile, not a full image.
+                          │
+4. ANALYSE     Velociraptor — import with an explicit ClientId.
+                 Registry hives, MFT and USN journal, prefetch, Amcache,
+                 scheduled tasks, WMI subscriptions, browser history,
+                 shellbags and jumplists (workstations only — Server Core
+                 has no shell and cannot carry user-activity artifacts).
+                          │
+5. TIMELINE    Notebooks and VQL over the imported collection.
+                 Add to Timeline, annotate, correlate against the SIEM
+                 window using host.id.
+                          │
+6. PROVE       Publish the finding back to Elasticsearch via
+                 elastic_upload(), so the artifact evidence sits beside
+                 the alert that started it.
+```
+
+**What only Velociraptor can answer:** raw NTFS artifacts, the MFT and USN journal,
+registry hives, prefetch, deleted-file recovery, and arbitrary queries against live system
+state. An exercise that ends at "the EDR showed me the process" is a detection exercise;
+one that ends at "and here is the artifact proving what it touched" is a DFIR exercise.
+
+#### 9.2.1 Validation status — 2026-08-15
+
+The workflow above was designed before the build existed. Checked against it:
+
+| Step | State | Detail |
+|---|---|---|
+| 1. DETECT (Kibana) | **validated** | ~110k Suricata alerts, Zeek notices, and 62,628 rules incl. Stamus lateral. Anomaly records now present. |
+| 2. TRIAGE (Elastic Defend) | **partial** | `endpoint.events.process/file/network` flowing with ancestry — but from the Linux container host only. |
+| 3. ACQUIRE (Velociraptor) | **blocked** | `velociraptor01` is powered off, pending its move to l3e7. |
+| 4. ANALYSE (Velociraptor) | **blocked** | Same, and the artifacts named — MFT, USN, registry hives, prefetch, Amcache, shellbags — are Windows-only. |
+| 5. TIMELINE | **blocked** | Depends on 4. |
+| 6. PROVE (`elastic_upload`) | **untested** | Depends on 4. |
+
+Two dependencies gate the whole back half, and they are the same two that gate BZAR and
+the Stamus ruleset:
+
+1. **Velociraptor must be running** on l3e7 as the analysis station.
+2. **The Windows guests must be started** — `range-dc01`, `range-FS01`, `range-SQL01`,
+   `range-WEB01`, `range-WS01`, `range-WS02` are all currently stopped. Steps 4–6 are
+   defined almost entirely in terms of Windows forensic artifacts, so until then the range
+   can run detection exercises but not DFIR exercises.
+
+Put plainly: the range currently supports steps 1–2 well and cannot yet deliver the thing
+§9.3 says distinguishes a DFIR exercise from a detection exercise.
+
+### 9.3 Exercise design principles
+
+- **The SIEM alone must be insufficient.** If a Kibana query answers the whole question,
+  the exercise is testing rule coverage, not analysis.
+- **The acquisition step is a decision.** The analyst must choose to collect, and choose
+  what — which is the judgement being trained.
+- **Two exercises that fall out of the tooling itself**, and are worth building
+  deliberately: *find and exclude your own responder footprint* (the offline collector
+  leaves prefetch, USN, Amcache and BAM traces of its own), and *the DFIR tool as the
+  attacker's tool* — distinguishing authorised from unauthorised use of an identical
+  binary, which is a real and current adversary technique.
 
 ---
 
@@ -695,14 +1081,16 @@ Each phase is independently useful and independently verifiable.
 | Phase | Deliverable |
 |---|---|
 | 0 | `estate/*.yaml` + renderer skeleton + `range-verify`. Nothing deployed |
-| 1 | Bridges, VLANs, `fw01`, segment policy proven by `range-verify` |
-| 2 | `cthost01` + container edition rendered; Zeek sees all nine VLANs |
-| 3 | Noise engine: every Zeek log type the contract names actually exists |
-| 4 | Security Onion 3.0 rebuilt, lean profile, separate `/nsm` disk, range mirror bridge |
-| 5 | Gold images + acceptance gate; VM edition rendered; AD live |
-| 6 | Full telemetry contract deployed, including the nine custom ingest pipelines (Postfix, Dovecot, vsftpd, CUPS, Samba, BIND, dnsmasq, Kea, Veeam); Gates 0–2 passing |
-| 7 | Attack platform: pivot, rotation, Sliver, Caldera; Gates 3–4 passing |
-| 8 | First end-to-end exercise, scored against the difficulty bands |
+| 1 | **Reclaim:** strip rick to headless 8 GB; cap ZFS ARC to 4 GB; raise `kernel.keys.maxkeys`; enable the in-kernel KSM advisor. No range components yet |
+| 2 | Bridges, VLANs, `fw01`, segment policy proven by `range-verify` |
+| 3 | `cthost01` (Debian 13 + Incus, isolated idmaps) + container edition rendered; Falco and narrow auditd on its kernel; Zeek sees all nine VLANs |
+| 4 | Noise engine: every Zeek log type the contract names actually exists |
+| 5 | Security Onion 3.2 built fresh on Oracle Linux 9, 48 GB, separate `/nsm` volume, dedicated range mirror bridge |
+| 6 | Gold images + telemetry acceptance gate; VM edition rendered; AD live; **KSM reclaim measured against the ≥25% gate** |
+| 7 | Elastic Agent + Defend deployed with the fidelity policy; Velociraptor analysis station stood up with artifact bundles pre-loaded |
+| 8 | Full telemetry contract, including the nine custom ingest pipelines (Postfix, Dovecot, vsftpd, CUPS, Samba, BIND, dnsmasq, Kea, Veeam); Gates 0–2 passing |
+| 9 | Attack platform: pivot, rotation, Sliver, Caldera; Gates 3–4 passing |
+| 10 | First end-to-end exercise, run across all three tools and scored against the difficulty bands |
 
 ---
 
@@ -710,19 +1098,29 @@ Each phase is independently useful and independently verifiable.
 
 Carried from research, to be resolved empirically before the phases that depend on them.
 
-1. Does Security Onion 3.0 change the Elastic Agent enrollment or ingest-pipeline story
-   materially versus 2.4? (Affects Phase 4 and 6.)
-2. Does Elastic Defend resolve LXC container *names*, or only IDs? If names, the
-   container attribution glue gets simpler.
-3. Sysmon for Linux events 2 and 22 — verify empirically that they fire before designing
+**Resolved since the first draft** — kept for the record: Security Onion 3.x ingest-pipeline
+handling is unchanged from 2.4, same path, same parse-in-Elasticsearch model. The container
+host's inotify limits are already at 4,194,304 watches, so file-integrity coverage is not
+watch-constrained. **Ludus was evaluated and rejected** — it rewrites host networking, has
+no LXC support at all, and its Sysmon role is paid while audit-policy, script-block-logging,
+auditd and Suricata roles do not exist; its Packer templates and a few Ansible roles are
+worth vendoring, nothing else.
+
+1. Whether Security Onion's own Sysmon ingest pipeline populates `process.entity_id`. It
+   uses its own parser rather than Elastic's, and the answer decides whether Sigma-derived
+   and Elastic-derived content share field names. **Highest-priority unknown** — it shapes
+   how Sysmon-side detections get authored.
+2. Whether an imported Velociraptor collection fires `System.Flow.Completion`, which is
+   what `Elastic.Flows.Upload` watches. If not, uploads run from a notebook cell instead.
+3. Real KSM reclaim across six identical Windows clones on this hardware. No good published
+   Windows-on-Proxmox measurement exists; the 25–30% planning figure is interpolated, and
+   the concurrent-workstation decision depends on it.
+4. Sysmon for Linux events 2 and 22 — verify empirically that they fire before designing
    timestomping or DNS detections on them.
-4. `fs.inotify.max_user_watches` on the container host, and whether privileged containers
-   share one budget. Determines whether file-integrity coverage across 45 containers is
-   real or silently partial.
 5. Whether the built-in Windows 11 Sysmon optional feature exists on LTSC and Server
    2022 Core — it does not coexist with standalone Sysmon.
-6. Ludus (Proxmox-native range orchestrator, very actively developed) — evaluate whether
-   its role model is worth adopting for `render/pve` rather than building from scratch.
+6. Whether the AppLocker "MSI and Script" channel exists on Server Core. Documentation does
+   not settle it; two `wevtutil` commands do.
 7. JA4+ is under the FoxIO License 1.1: permissive for internal and academic use, not for
    monetization. Fine for personal practice; needs review if this ever ships commercially.
 8. Does Zeek's syslog analyzer parse TCP on the sensor image we build? Older Zeek shipped
