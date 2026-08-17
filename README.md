@@ -9,9 +9,20 @@ Built for threat-hunting practice. Runs on Proxmox.
 
 ## Status
 
-Design phase. See [`docs/superpowers/specs/2026-08-14-unified-cyber-range-design.md`](docs/superpowers/specs/2026-08-14-unified-cyber-range-design.md).
+**Built and producing telemetry.** The range runs on two hypervisors, mirrors every VLAN to a
+Security Onion sensor, and carries an instrumented Windows domain alongside a ~30-container Linux
+edition of the same company.
 
-Nothing is deployed yet.
+- **[`docs/VERIFIED_STATUS.md`](docs/VERIFIED_STATUS.md)** — measured state of every step, with the
+  numbers behind each gate and explicit corrections where something was previously claimed without
+  measurement.
+- **[`docs/BUILD_FROM_SCRATCH.md`](docs/BUILD_FROM_SCRATCH.md)** — build the whole thing yourself using
+  native commands and upstream packages, depending on none of the scripts here.
+- **[`docs/superpowers/specs/2026-08-14-unified-cyber-range-design.md`](docs/superpowers/specs/2026-08-14-unified-cyber-range-design.md)** — the original design.
+
+Current headline gaps: Sysmon volume runs 2–5× above the 5,000–10,000/endpoint/day target, the
+"workstations" are Server 2022 images (so Prefetch artifacts are unobtainable), Office is not installed
+anywhere, and adversary emulation is deliberately deferred until the benign baseline is finished.
 
 ## The idea
 
@@ -54,8 +65,14 @@ docs/        specs and runbooks
 
 ## Credentials and site configuration
 
-None are committed. Real hostnames, addresses, and credentials live in `site.env`, which
-is gitignored. Everything in the repository refers to placeholders.
+The intent is that real hostnames, addresses and credentials live in `site.env`, which is gitignored,
+and everything in the repository refers to placeholders.
+
+> ⚠️ **That intent is currently violated.** This repository is **public**, and
+> `noise/containers/rangenoise.sh` contains a lab credential in its committed form. Treat every range
+> password as compromised and rotate it. Documentation added since is placeholder-only, and
+> `docs/BUILD_FROM_SCRATCH.md` supplies no credentials at all — but the history still holds the
+> exposed value, so rotation is the only real fix.
 
 ## Scope
 
