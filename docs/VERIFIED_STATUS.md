@@ -2,12 +2,16 @@
 
 Measured state of every step in
 [`2026-08-16-host-and-network-log-generation-research.md`](superpowers/plans/2026-08-16-host-and-network-log-generation-research.md),
-as at **2026-08-17**. Every number here came from a query against Elasticsearch or from reading the host
+as at **2026-08-18**. Every number here came from a query against Elasticsearch or from reading the host
 directly. Where a claim was previously made without measurement, it is corrected rather than quietly
 dropped.
 
 The rule this file exists to enforce: **a step is done when its gate is measured, not when the work
 feels finished.**
+
+Gate measurements are now recorded automatically: `/usr/local/bin/range-gate-record` on so01 appends a
+JSON line to `/var/log/range-gates.jsonl` every 20 minutes over a 60-minute window, storing raw counts
+as well as verdicts so any reader can recompute against different thresholds.
 
 ---
 
@@ -17,11 +21,87 @@ feels finished.**
 |---|---|---|
 | 1 — repoint agent output | ≥5,000 Windows events/host/day | ✅ **PASS**, 6 of 6 guests |
 | 2 — Windows agent policy | 4624 within 60s; 4688 with command line | ✅ **PASS** |
-| 3 — Sysmon config from upstream | EIDs 1,3,10,11,22 present **and** 5k–10k/endpoint/day | ⚠️ **HALF** — IDs pass, volume 2–5× over |
-| 4 — GHOSTS API + timelines | ≥60 JA3 none >25%; ≥80 UA none >20%; resumed ≥30% | 🔶 API live, 2 clients active; diversity below target |
-| 5 — diurnal model | peak/trough 5–20×, peak in business hours, weekend shape | ✅ curve applied estate-wide; weekend shape unverified |
-| 6 — host artifacts + Atomic Red Team | an Atomic test yields expected events in 60s | ⛔ **not started** — deliberately behind benign-baseline order |
-| 7 — failure rate + auditd | `SF` ≥85%; auditd firehose reduced | ✅ failure rate 3.8%; auditd cut three times |
+| 3 — Sysmon config from upstream | EIDs 1,3,10,11,22 present **and** 5k–10k/endpoint/day | ⚠️ **HALF** — IDs pass; volume cut ~20× and converging, see below |
+| 4 — GHOSTS API + timelines | ≥60 JA3 none >25%; ≥80 UA none >20%; resumed ≥30% | ✅ **PASS**, 5 of 5, sustained across recorder samples |
+| 5 — diurnal model | peak/trough 5–20×, peak in business hours, weekend shape | ✅ 6.93× with peak at 14Z; weekend shape still unverified |
+| 6 — host artifacts + Atomic Red Team | an Atomic test yields expected events in 60s | ⛔ artifacts done; Atomic **blocked by operator standing order** |
+| 7 — failure rate + auditd | `SF` ≥85%; auditd firehose reduced | ⚠️ auditd ✅; **SF 67.8% FAIL** — see correction below |
+
+### Correction: Step 7 was measured against the wrong metric
+
+This file previously recorded Step 7 as ✅ on "failure rate 3.8%". The plan's gate is **`SF` ≥ 85%** —
+a floor on *successful* connections, which is **not** the complement of a failure rate, because Zeek has
+many states that are neither `SF` nor a failure (`RSTR`, `RSTO`, `OTH`, `S1`, `SH`). Measured properly:
+
+| Scope | SF | Verdict |
+|---|---:|---|
+| all transports | 86.9% | passes on a literal reading |
+| **TCP only** | **67.8%** | **FAIL** |
+
+The shortfall is **not** the generators. Patched containers sit at ~97% SF. It is the Windows tier, where
+Kerberos `:88` is 100% `RSTR`, SMB `:445` 100% `RSTO` and LDAP `:389` mixed — Windows tears these down
+with RST rather than a graceful FIN. **Open question for the operator:** whether `SF ≥ 85%` is the right
+gate for an AD-heavy estate, or whether it is mis-specified for this environment.
+
+### Step 4 — now PASS, measured on a 60-minute window
+
+| Sub-gate | Measured | Verdict |
+|---|---:|---|
+| unique JA3 ≥60 | 167 | ✅ |
+| top JA3 ≤25% | 9.26% | ✅ |
+| unique UA ≥80 | 111 | ✅ |
+| top UA ≤20% | 13.56% | ✅ |
+| `ssl.resumed` ≥30% | 33.2% → 39.9% | ✅ |
+
+Two of these were **unreachable by construction**, not merely untuned:
+
+- **`ssl.resumed`** — curl *cannot* resume a TLS session. Proven: every chained request full-handshakes
+  regardless of protocol version or connection handling, because OpenSSL does not cache client sessions
+  across processes. It closes ~1.2 ms after the handshake, before nginx's post-handshake ticket arrives.
+  Fixed by giving webnoise a Python TLS path that reuses a per-host `SSLSession` and closes with
+  `unwrap()` so it keeps the clean FIN that made curl necessary in the first place.
+- **`unique UA ≥80`** — browser UAs are chosen *per host*, so they cap at the container count (31),
+  giving a ceiling of ~77 against a gate of 80. Fixed by widening the per-request app-agent pool.
+
+A third fix was a realism improvement that happened to unblock the second: webnoise drew from a
+194-domain profile, so a host was never revisited and there was no session to resume. Re-weighting the
+existing weights by rank (Zipf) fixed both — real web access is heavily skewed, and a flat draw over 194
+domains was itself an artefact.
+
+**Measurement lesson recorded here deliberately:** cardinality gates cannot be judged on short windows.
+`unique_ua` read 49 on a 6-minute window and 111 on a 60-minute window *for the same estate*. Widen the
+window before concluding.
+
+### Step 3 — volume, three levers, converging
+
+ws02 measured 203,000 docs/day against a 5,000–10,000 gate. Three fixes, each chosen from measurement:
+
+| Lever | Effect |
+|---|---|
+| GHOSTS `stickiness` 0 → 75 (upstream default is 0) | 203,000 → 34,645/day |
+| browse `DelayAfter` ×3.5 | → ~15,570/day; taskkill and firefox left the top-5 processes |
+| scheduled noise task intervals ×2.5 | projected ~9,600/day — **verification pending** |
+
+`stickiness=0` means the NPC never follows a link within a site, so every timeline event became a fresh
+browser launch/kill cycle. Upstream documents no option to stop the per-event relaunch, so `DelayAfter`
+and task cadence were the remaining levers. Already in band: `ir-dc01` ~4,900, `web01` ~3,100.
+`sql01` ~10,950 and `fs01` ~10,285 are marginally over and are server roles untouched by these changes.
+
+### Infrastructure change: Security Onion consolidated onto cthuwu
+
+so01 moved from l3e7 to cthuwu keeping `192.168.1.146`, with both MACs preserved. `vmbr1` is now the LAN
+bridge (`enp73s0` enslaved), and vmbr0's `MASQUERADE` was repointed to it — miss that and the whole
+10.20.0.0/24 range loses egress.
+
+**A regression worth recording, because the failure mode is deceptive.** After the move the sensor was
+receiving 3 packets per 10 seconds while `so-status` was all-green, Elasticsearch was GREEN and
+`capture_loss` read **0.0%**. Cause: so01's monitor tap became a new port on `vmbr91`, where MAC learning
+was still on, so mirrored unicast kept going to the previously-learned port. Fixed with
+`learning off` + `flood on` + fdb flush + `ageing_time 0`, persisted in the bridge stanza.
+
+**`capture_loss` alone is not a span health check** — Zeek computes loss as a fraction of what it
+*receives*, so a starved sensor loses nothing and reports a perfect 0%. Measure packet delivery into the
+monitor tap instead.
 
 ---
 
