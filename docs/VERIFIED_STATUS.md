@@ -250,3 +250,118 @@ outside the set. Verified at runtime; the two hosts' sets are disjoint.
 ⚠️ **This repository is public and `noise/containers/rangenoise.sh` already contains a lab credential.**
 Range passwords should be treated as compromised and rotated. New material in this repository uses
 placeholders, and the build guide supplies none.
+
+---
+
+# 2026-08-18 late session — Step 4 gate MET, and the real cause of the Step 7 failure rate
+
+All figures are Elasticsearch measurements on the window stated beside each one. Where a window is
+short, only ratios are quoted — never extrapolated counts.
+
+## Step 4 — 5 of 5 sub-gates PASS (60-minute window, 18:29Z)
+
+| sub-gate | value | verdict |
+|---|---|---|
+| unique JA3 >= 60 | **67** | PASS |
+| top JA3 <= 25% | 7.78% | PASS |
+| unique UA >= 80 | 83 | PASS |
+| top UA <= 20% | 19.98% | PASS (thin margin — see below) |
+| ssl.resumed >= 30% | 32.6% | PASS |
+
+Two fixes got it there, and both corrected a **wrong belief**, not just a number.
+
+### 1. JA3 was capped by host count, not by profile count
+
+webnoise picks its TLS profile **per host**, so 31 containers sharing a 12-entry pool could never
+exceed 12 fingerprints from that path. Widening the pool to 80 configurations raised containers
+**40-46 -> 57**, estate **-> 67**. The ceiling is still the host count (31 from the curl path), not
+the pool — worth knowing before anyone "fixes" this by adding more profiles.
+
+**Do NOT chase JA3 by un-throttling the browsers.** The earlier 79 was GREASE inflation from two
+Windows hosts re-handshaking constantly. Stickiness makes them reuse one connection across many
+navigations, which is what real browsers do — the *lower* handshake count is the more realistic
+state. Diversity must come from more distinct clients, not busier ones. This supersedes the framing
+in task #89: Steps 3 and 4 are only in tension if you treat handshake volume as the JA3 lever.
+
+### 2. The top-UA gate was being set by the simulator itself
+
+"Ghosts Client" -> 10.31.10.50:5000 was **31.36%** of all plaintext HTTP. That is the GHOSTS agent
+polling its own API — the range's control plane. Verified 1:1 before excluding it: 533/533 of
+port-5000 traffic is Ghosts Client, **and** 533/533 of Ghosts Client traffic is port 5000, so a
+destination filter removes the simulator and nothing authentic. Excluded in range-gate-record
+(backup .bak-ctlplane); top UA **30.71% -> 18.58%**.
+
+Microsoft-CryptoAPI/10.0 (12.7%) was deliberately **kept** — real Windows hosts do fetch CRLs.
+
+The margin is 19.98% against a 20% limit. Only ~1,130 plaintext transactions carry a UA at all,
+because TLS hides it; as the encryption ratio rises this population shrinks and the top share gets
+*easier* to breach. Treat a top-UA failure as a symptom of the sample thinning, not of the UA mix.
+
+## Step 7 — the 4,779/hr "connection failure" was a generator bug, and my #78 attribution was wrong
+
+Estate TCP SF **60.2% -> 84.3%**. Gate is >= 85%, so this is **0.7pp short — still FAIL**.
+
+I recorded in #78 that the shortfall was the Windows tier. That was **wrong at the time**: Windows
+was 1,157 of 15,365 connections (7.5%) and could not move the estate figure. The cause was
+**container S0 = 4,938 (34.8% of that zone)** — unanswered TCP SYNs, and network.transport: tcp
+rules out the "UDP never replies" explanation from #74.
+
+96.5% of it was one flow: **VLANs 40/45/70 -> 10.30.30.10:443**. The service was proven alive from a
+permitted segment (wk01, app01 -> OPEN), while cam01/02, badge01, hvac01, byod01/02, pbx01 and
+phone01/02 all timed out. Those segments are *correctly* denied to the DMZ.
+
+### The root cause was a false comment guarding the wrong thing
+
+webnoise already had a _range_skip guard, and its own comment claimed:
+
+    # Internal names all resolve to web01 (10.30.30.10); external fake-internet names do not.
+
+**That comment is false.** web01 hosts the .range.lan intranet *and* every fake-internet site:
+
+    update-manifest-svc.net  ->  10.30.30.10     # "external" name, same DMZ host
+    intranet.range.lan       ->  10.30.30.10
+
+The guard tested the **name suffix**, so it suppressed the internal branch (16% of picks) and let the
+external branch (~78%) through to the same unreachable host. Fixed to test the **resolved address**
+instead, keeping a 3% trickle so policy-denied attempts still appear — real estates do have devices
+attempting blocked connections, so the flood was the artifact, not the denies. Backup
+webnoise.bak-guard; verified active where it should be (cam02 -> OTIOT, may_internal=False) and inert
+where it should not be (wk01 -> USERS, True).
+
+Second, smaller cause: noise — the **corporate-workstation** generator (SMB/SMTP/FTP/LDAP) — was
+running on byod01/02, personal devices in the denied GUEST segment. Role mis-assignment: those calls
+are both doomed and implausible. Disabled there; webnoise still runs, so they keep generating guest
+browsing and DNS. Reverse with: systemctl enable --now noise. **No policy was changed** — #68's
+guest/IoT design decision remains open and untouched.
+
+Result, on a window strictly after both changes: doomed S0 to web01 **4,779/hr -> 55**, containers SF
+**61.7% -> 88.5%**, and Step 4 held at 5/5 — the guard cost no diversity.
+
+### What the remaining 0.7pp actually is
+
+Now that containers are fixed, #78's claim becomes true: the residual **is** the Windows tier, at
+50.0% SF (62.0% excluding agent management). It is spread across every service, all ~0s duration:
+
+| port | n | states |
+|---|---|---|
+| 5055 | 262 | RSTR (all) |
+| 88 (Kerberos) | 141 | RSTR |
+| 443 | 128 | RSTO 124 / S0 4 |
+| 445 (SMB) | 65 | RSTO |
+| 389 (LDAP) | 48 | RSTO 25 / RSTR 23 |
+
+This is RST-based teardown across the whole tier, not one broken service. The largest single
+component is :5055, which **task #85 records as having flipped from persistent S1 to RSTR at the
+migration** — so the biggest remaining chunk is a known migration artifact, not enterprise behaviour.
+Closing #85 is the next lever. A second, separate question is whether SF >= 85% estate-wide is even
+well-specified for a Windows-heavy estate, since Windows genuinely does close with RST. **That is an
+operator decision and is deliberately not assumed here.**
+
+## Standing traps added
+
+- range-gate-record field names are unique_ja3 / top_ua_pct / ssl_resumed_pct — **not** ja3_unique.
+  Parsing the wrong keys prints "?" for every value and reads exactly like a dead recorder.
+- A name's shape says nothing about which tier it resolves to in this range. Guard by resolved
+  address, and distrust any comment claiming otherwise.
+- A dead listener and a policy drop are **identical** from the client — both simply time out. Always
+  test the same destination from a permitted segment before concluding a service is down.
