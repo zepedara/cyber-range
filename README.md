@@ -13,6 +13,10 @@ Built for threat-hunting practice. Runs on Proxmox.
 Security Onion sensor, and carries an instrumented Windows domain alongside a ~30-container Linux
 edition of the same company.
 
+- **[`docs/superpowers/plans/2026-08-18-build-the-range-on-c240m4.md`](docs/superpowers/plans/2026-08-18-build-the-range-on-c240m4.md)**
+  — **START HERE if you are building this yourself.** A full build plan for a single Cisco UCS
+  C240 M4 (24-thread Xeon, 384 GB RAM), with sizing for that hardware, every verification query,
+  and an appendix of the traps that cost the first build real time.
 - **[`docs/VERIFIED_STATUS.md`](docs/VERIFIED_STATUS.md)** — measured state of every step, with the
   numbers behind each gate and explicit corrections where something was previously claimed without
   measurement.
@@ -58,6 +62,16 @@ render/      materializes it as containers or VMs
 roles/       one directory per host role, edition-agnostic
 noise/       diurnal traffic generation
 attack/      pivot, domain rotation, C2, ATT&CK emulation
+```
+
+**Status of that layout, measured 2026-08-18:** only `noise/`, `tools/`, `migration/` and `docs/`
+exist. **`estate/`, `render/`, `roles/` and `attack/` are NOT YET BUILT.** The first build wrote the
+enterprise into scripts and host state rather than into data, so the range runs and produces good
+telemetry but cannot be reproduced from this repository — the exact failure the design spec warned
+about when it described `lab-env`. Part 9 of the build plan above covers doing it properly, and a
+greenfield build is the right moment to fix it.
+
+```
 telemetry/   mirroring, agents, ingest pipelines
 measure/     the coverage gates and exercise scoring
 docs/        specs and runbooks
