@@ -17,6 +17,10 @@ edition of the same company.
   — **START HERE if you are building this yourself.** A full build plan for a single Cisco UCS
   C240 M4 (24-thread Xeon, 384 GB RAM), with sizing for that hardware, every verification query,
   and an appendix of the traps that cost the first build real time.
+- **[`docs/AUDIT_AND_LESSONS.md`](docs/AUDIT_AND_LESSONS.md)** — a full audit of the running
+  environment (every host, container, VLAN and dataset, measured), everything that was accomplished
+  with the number that proves it, and every wrong diagnosis this build made and why. Includes the
+  finding that **cardinality gates are diurnal and flip twice a day**.
 - **[`docs/VERIFIED_STATUS.md`](docs/VERIFIED_STATUS.md)** — measured state of every step, with the
   numbers behind each gate and explicit corrections where something was previously claimed without
   measurement.
