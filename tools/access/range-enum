@@ -1,0 +1,97 @@
+#!/bin/bash
+# ============================================================================
+# range-enum - SSH forced-command wrapper. Grants read-only VERBS, never a shell.
+#
+# Installed at /usr/local/bin/range-enum and pinned via authorized_keys:
+#   command="/usr/local/bin/range-enum",no-pty,... ssh-ed25519 AAAA... remote
+#
+# $SSH_ORIGINAL_COMMAND is whatever the client asked for. It is matched against a
+# fixed allowlist and is NEVER passed to a shell for evaluation. The only verb
+# that accepts an argument (guest-config) validates it as digits before use.
+#
+# Every request is logged to syslog with the peer address, allowed or denied.
+# ============================================================================
+set -uo pipefail
+cmd="${SSH_ORIGINAL_COMMAND:-help}"
+peer="${SSH_CLIENT%% *}"
+log(){ logger -t range-enum "peer=${peer:-local} $1"; }
+
+case "$cmd" in
+  help|"")
+    cat <<'EOF'
+range-enum - read-only enumeration of the reference cyber range
+
+  host-summary     hypervisor version, kernel, CPU, RAM
+  guest-list       all VMs: id, name, status, memory, bootdisk
+  guest-config ID  full config for ONE guest (digits only)
+  bridge-list      network bridges and state
+  span-check       SPAN bridge discipline (learning / ageing_time)
+  storage-list     storage pools, capacity, usage
+  zfs-status       zpool list + ARC size
+  container-list   Incus containers with addresses
+  vlan-coverage    VLANs Zeek has observed in the last 24h
+  siem-health      Elasticsearch cluster health + doc count
+  siem-datasets    telemetry composition over the last 24h
+  gates-latest     most recent gate-recorder verdict
+  help             this text
+
+This is a read-only channel. Writes, shells, scans and anything not listed above
+are refused and logged. If you need something else, ask the operator to run it.
+EOF
+    ;;
+
+  host-summary)
+    log "verb=host-summary"
+    pveversion 2>/dev/null | head -1; uname -r
+    lscpu 2>/dev/null | grep -E '^Model name|^CPU\(s\)|^Thread\(s\)|^Core\(s\)|^Socket'
+    free -g 2>/dev/null | awk '/^Mem/{print "RAM total="$2"G used="$3"G avail="$7"G"}'
+    ;;
+
+  guest-list)   log "verb=guest-list";   qm list 2>/dev/null ;;
+
+  guest-config\ *)
+    id="${cmd#guest-config }"
+    if [[ "$id" =~ ^[0-9]{1,5}$ ]]; then
+      log "verb=guest-config id=$id"; qm config "$id" 2>/dev/null
+    else
+      log "DENIED=guest-config-bad-arg"; echo "ERROR: guest id must be digits only"; exit 2
+    fi
+    ;;
+
+  bridge-list)  log "verb=bridge-list";  ip -br link show type bridge 2>/dev/null ;;
+
+  span-check)
+    log "verb=span-check"
+    echo "vmbr91 ageing_time=$(cat /sys/class/net/vmbr91/bridge/ageing_time 2>/dev/null)"
+    for p in /sys/class/net/vmbr91/brif/*; do
+      [ -e "$p" ] || continue
+      echo "port $(basename "$p") learning=$(cat "$p/learning" 2>/dev/null)"
+    done
+    ;;
+
+  storage-list) log "verb=storage-list"; pvesm status 2>/dev/null ;;
+
+  zfs-status)
+    log "verb=zfs-status"; zpool list 2>/dev/null
+    awk '/^size/ {printf "ARC size=%.1f GiB\n", $3/1073741824}' /proc/spl/kstat/zfs/arcstats 2>/dev/null
+    ;;
+
+  container-list)
+    log "verb=container-list"
+    ssh -o BatchMode=yes -o ConnectTimeout=15 cthost01 \
+      'incus list -c ns4 --format csv' 2>/dev/null || echo "container host unreachable"
+    ;;
+
+  vlan-coverage|siem-health|siem-datasets|gates-latest)
+    log "verb=$cmd"
+    ssh -o BatchMode=yes -o ConnectTimeout=20 so01 \
+      "/usr/local/bin/range-enum-siem $cmd" 2>/dev/null \
+      || echo "SIEM unreachable, or range-enum-siem is not installed there"
+    ;;
+
+  *)
+    log "DENIED=$cmd"
+    echo "ERROR: '$cmd' is not permitted on this channel. Run 'help' for the allowlist."
+    exit 1
+    ;;
+esac

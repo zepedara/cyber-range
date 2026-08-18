@@ -1,0 +1,115 @@
+#!/bin/bash
+# ============================================================================
+# range-access - enable/disable read-only enumeration access for a REMOTE
+#                Claude Code session, in ONE command.
+#
+#   range-access status
+#   range-access enable 'ssh-ed25519 AAAA... remote-claude'
+#   range-access disable
+#   range-access test
+#
+# Run as root ON the Proxmox host. Transport is Tailscale only - this script
+# never opens a port, never touches the firewall, and never forwards anything.
+#
+# SECURITY MODEL - read this before changing anything:
+#   * The account is unprivileged and has NO shell (/usr/sbin/nologin).
+#   * The key is pinned to a FORCED COMMAND. The client cannot choose what runs;
+#     sshd always runs range-enum regardless of what the client asks for.
+#   * range-enum implements an ALLOWLIST of read-only verbs. No client-supplied
+#     string is ever evaluated by a shell, so there is nothing to inject into.
+#   * Every request, allowed or denied, is logged to syslog with the peer address.
+#
+#   The remote peer is an AI agent that reads untrusted content from the web.
+#   Assume that anything it can execute, an attacker who influences it can also
+#   execute. That is why this grants VERBS, not a shell.
+# ============================================================================
+set -uo pipefail
+
+RO_USER="rangeread"
+RO_HOME="/home/${RO_USER}"
+AUTH="${RO_HOME}/.ssh/authorized_keys"
+WRAPPER="/usr/local/bin/range-enum"
+RESTRICT="no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding"
+
+die(){ echo "ERROR: $*" >&2; exit 1; }
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+
+case "${1:-status}" in
+
+status)
+  echo "== range-access status =="
+  if id "$RO_USER" >/dev/null 2>&1; then
+    echo "  account   : present ($(getent passwd "$RO_USER" | cut -d: -f7))"
+  else
+    echo "  account   : ABSENT  -> access is disabled"
+  fi
+  [ -x "$WRAPPER" ] && echo "  wrapper   : installed $WRAPPER" || echo "  wrapper   : MISSING"
+  if [ -s "$AUTH" ] && grep -q '^command=' "$AUTH" 2>/dev/null; then
+    n=$(grep -c '^command=' "$AUTH")
+    echo "  keys      : $n pinned key(s) -> ACCESS IS LIVE"
+    grep -o 'ssh-[a-z0-9]* [A-Za-z0-9+/=]\{0,24\}' "$AUTH" | sed 's/^/              /'
+  else
+    echo "  keys      : none -> access is disabled"
+  fi
+  command -v tailscale >/dev/null 2>&1 && \
+    echo "  reachable : $(tailscale ip -4 2>/dev/null | head -1) (tailnet only)"
+  echo
+  echo "  recent activity:"
+  journalctl -t range-enum -n 8 --no-pager 2>/dev/null | sed 's/^/    /' || echo "    (none)"
+  ;;
+
+enable)
+  KEY="${2:-}"
+  [ -n "$KEY" ] || die "usage: range-access enable 'ssh-ed25519 AAAA... comment'"
+  case "$KEY" in
+    ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*\ *) ;;
+    *) die "that does not look like an SSH PUBLIC key. Never paste a private key." ;;
+  esac
+  echo "$KEY" | grep -qi 'PRIVATE KEY' && die "that is a PRIVATE key - refusing"
+
+  [ -x "$WRAPPER" ] || die "$WRAPPER is missing. Install range-enum first."
+
+  if ! id "$RO_USER" >/dev/null 2>&1; then
+    useradd --create-home --home-dir "$RO_HOME" --shell /usr/sbin/nologin "$RO_USER" \
+      || die "useradd failed"
+    echo "created $RO_USER (nologin)"
+  fi
+  install -d -m 700 -o "$RO_USER" -g "$RO_USER" "${RO_HOME}/.ssh"
+  printf 'command="%s",%s %s\n' "$WRAPPER" "$RESTRICT" "$KEY" > "$AUTH"
+  chown "${RO_USER}:${RO_USER}" "$AUTH"; chmod 600 "$AUTH"
+  logger -t range-access "ACCESS ENABLED for a remote key"
+  echo "access ENABLED. Verify with: range-access test"
+  echo "revoke at any time with: range-access disable"
+  ;;
+
+disable)
+  if [ -f "$AUTH" ]; then : > "$AUTH"; echo "keys cleared"; fi
+  if id "$RO_USER" >/dev/null 2>&1; then
+    pkill -u "$RO_USER" 2>/dev/null
+    userdel -r "$RO_USER" 2>/dev/null && echo "account removed"
+  fi
+  logger -t range-access "ACCESS DISABLED"
+  echo "access DISABLED. Nothing remote can reach this host through range-enum."
+  ;;
+
+test)
+  echo "== verifying the restriction actually restricts =="
+  echo "-- allowlisted verb (expect output):"
+  SSH_ORIGINAL_COMMAND="host-summary" "$WRAPPER" | head -4 | sed 's/^/    /'
+  echo "-- denied verb (expect refusal + non-zero exit):"
+  if SSH_ORIGINAL_COMMAND="rm -rf /" "$WRAPPER" >/dev/null 2>&1; then
+    echo "    *** FAIL: a non-allowlisted command was ACCEPTED. Do not enable access. ***"; exit 1
+  else
+    echo "    refused correctly"
+  fi
+  echo "-- argument injection attempt (expect refusal):"
+  if SSH_ORIGINAL_COMMAND="guest-config 170; id" "$WRAPPER" >/dev/null 2>&1; then
+    echo "    *** FAIL: injected argument was ACCEPTED. Do not enable access. ***"; exit 1
+  else
+    echo "    refused correctly"
+  fi
+  echo "all restriction checks passed"
+  ;;
+
+*) die "usage: range-access {status|enable <pubkey>|disable|test}" ;;
+esac
