@@ -715,6 +715,548 @@ Only after Parts 1–8 pass their gates:
 
 ---
 
+# DETAILED BUILD REFERENCE
+
+Parts 0–10 above are the plan and the reasoning. Parts 11–19 below are the concrete build: what to
+create, with the actual commands. Work through them in order.
+
+---
+
+## Part 11 — The service catalogue: what the fake company actually contains
+
+The estate must look like a *company*, not a pile of Linux boxes. Every host below has a business
+reason to exist, and that reason determines the traffic it generates. **Build the container edition
+first** — it is cheap on your hardware and produces most of the network telemetry.
+
+### 11.1 Container edition (~30 hosts minimum; you can afford 60–100)
+
+| Host | Segment | Service | Why it exists (drives its traffic) |
+|---|---|---|---|
+| `dc01` | SERVERS | dnsmasq/bind + LDAP | Primary resolver. **Every** host queries it. |
+| `fs01` | SERVERS | Samba | File shares — generates SMB sessions, 5140/5145 events |
+| `sql01` | SERVERS | MariaDB | App backend — steady 3306 connections |
+| `app01` | SERVERS | nginx + a small app | Internal business app over TLS |
+| `mail01` | SERVERS | Postfix/Dovecot | SMTP/IMAP, the classic phishing delivery path |
+| `proxy01` | SERVERS | Squid | Egress proxy — realistic enterprises have one |
+| `ca01` | SERVERS | step-ca or OpenSSL CA | **Critical for realism**: issues the internal certs |
+| `mon01` | MGMT | Prometheus/Zabbix | Monitoring polls everything on a fixed interval |
+| `bk01` | MGMT | restic/rsync target | Nightly backup — big periodic transfers |
+| `jump01` | MGMT | OpenSSH | Admin jump host — the box an attacker wants |
+| `wk01`–`wk06` | USERS | desktop-ish | Browsing, SMB, mail, DNS |
+| `web01` | DMZ | nginx | Public-facing site; hosts the fake-internet names too |
+| `mx01` | DMZ | Postfix relay | Inbound mail |
+| `pbx01` | VOICE | Asterisk | SIP registrations and calls |
+| `phone01`–`03` | VOICE | SIP endpoints | Register to the PBX, place calls |
+| `cam01`–`03` | OT/IoT | RTSP/HTTP | Cameras — chatty, low-value, never touch DMZ |
+| `badge01` | OT/IoT | HTTP client | Badge reader polling a controller |
+| `hvac01` | OT/IoT | Modbus | Building control — Modbus is a great hunting oddity |
+| `br-wk01`–`02` | BRANCH | desktop-ish | Remote office over the "WAN" |
+| `br-fs01` | BRANCH | Samba | Branch file server |
+| `byod01`–`02` | GUEST | phone/laptop-ish | Personal devices, internet-only |
+| `ext01`–`04` | FAKE-INTERNET | nginx + certs | The "internet" — news, updates, CDN, SaaS |
+
+**The CA is not optional.** Traffic is only coherent if the domain in DNS is the domain in the TLS
+SNI is the name on the certificate. Without an internal CA, every TLS session has a mismatched or
+self-signed cert and an analyst can trivially separate real from fake.
+
+### 11.2 VM edition (CPU-bound for you — keep it tight)
+
+| VM | vCPU | RAM | Purpose |
+|---|---|---|---|
+| `so01` | 8 | 64–96 GB | Security Onion (SIEM + sensor) |
+| `fw01` | 2 | 4 GB | OPNsense — owns every VLAN gateway |
+| `cthost01` | 6 | 32–64 GB | Incus container host |
+| `dc01` | 2 | 6 GB | Windows domain controller |
+| `ws01`–`ws04` | 2 | 6 GB | Windows 10 LTSC workstations (Sysmon + Defend) |
+| `fs01-win` | 2 | 6 GB | Windows file server |
+| `velo01` | 2 | 8 GB | Velociraptor analysis station |
+| `ghosts01` | 2 | 4 GB | GHOSTS API server |
+
+---
+
+## Part 12 — OPNsense: VLAN gateways and the policy matrix
+
+`fw01` owns the gateway address of every segment. Nothing routes between segments except through it,
+which is what makes the policy matrix real and the denies loggable.
+
+- [ ] **Step 1: Create the VM with one NIC per segment**
+
+```bash
+qm create 300 --name fw01 --memory 4096 --cores 2 --cpu host \
+  --scsihw virtio-scsi-single --scsi0 rangestore:32 \
+  --ide2 local:iso/OPNsense-25.7-dvd-amd64.iso,media=cdrom \
+  --boot order=ide2\;scsi0 --ostype l26 --onboot 1
+
+# net0 = WAN/uplink, then one NIC per range segment
+qm set 300 --net0 virtio,bridge=vmbr0
+qm set 300 --net1 virtio,bridge=vmbr10
+qm set 300 --net2 virtio,bridge=vmbr20
+qm set 300 --net3 virtio,bridge=vmbr30
+qm set 300 --net4 virtio,bridge=vmbr40
+qm set 300 --net5 virtio,bridge=vmbr45
+qm set 300 --net6 virtio,bridge=vmbr60
+qm set 300 --net7 virtio,bridge=vmbr70
+qm set 300 --net8 virtio,bridge=vmbr99
+qm start 300
+```
+
+- [ ] **Step 2: Assign each interface a gateway address**
+
+Give every segment a `/24` with the firewall at `.1`:
+
+| Interface | Segment | Subnet | fw01 address |
+|---|---|---|---|
+| `vtnet1` | SERVERS | `10.30.10.0/24` | `10.30.10.1` |
+| `vtnet2` | USERS | `10.30.20.0/24` | `10.30.20.1` |
+| `vtnet3` | DMZ | `10.30.30.0/24` | `10.30.30.1` |
+| `vtnet4` | VOICE | `10.30.40.0/24` | `10.30.40.1` |
+| `vtnet5` | OT/IoT | `10.30.45.0/24` | `10.30.45.1` |
+| `vtnet6` | BRANCH | `10.30.60.0/24` | `10.30.60.1` |
+| `vtnet7` | GUEST | `10.30.70.0/24` | `10.30.70.1` |
+| `vtnet8` | FAKE-INTERNET | `10.30.99.0/24` | `10.30.99.1` |
+
+- [ ] **Step 3: Write the policy matrix, and LOG the denies**
+
+This is what makes the range teach segmentation. A reasonable starting matrix:
+
+| From ↓ To → | SERVERS | USERS | DMZ | VOICE | OT/IoT | GUEST | FAKE-NET |
+|---|---|---|---|---|---|---|---|
+| **SERVERS** | ✔ | ✔ | ✔ | ✖ | ✖ | ✖ | ✔ |
+| **USERS** | ✔ | ✔ | ✔ | ✖ | ✖ | ✖ | ✔ |
+| **DMZ** | limited | ✖ | ✔ | ✖ | ✖ | ✖ | ✔ |
+| **VOICE** | DNS only | ✖ | ✖ | ✔ | ✖ | ✖ | ✖ |
+| **OT/IoT** | DNS only | ✖ | ✖ | ✖ | ✔ | ✖ | ✖ |
+| **GUEST** | DNS only | ✖ | ✖ | ✖ | ✖ | ✔ | ✔ |
+
+**Set every deny rule to log.** Denied traffic is some of the best hunting material you will have,
+and it is free.
+
+> **Then make your generators respect it.** This is the trap that produced 4,779 phantom failures per
+> hour in the original build. If VOICE can only reach DNS, a phone must not be generating HTTPS to
+> the DMZ. Either give each role a policy-appropriate target list, or have the generator resolve its
+> target and skip when the address is on an unreachable tier. **Guard on the resolved address, not
+> the hostname's shape** — the fake-internet names and the intranet names resolve to the same web
+> host, so name-based guards silently pass ~78% of requests through.
+
+- [ ] **Step 4: Point DNS and NTP at range-internal servers**
+
+The firewall is the time root for the whole range. Verify the chain afterwards:
+
+```bash
+# on any range host - the stratum should chain back to fw01, and reach should be non-zero
+chronyc sources -v   ||  ntpq -pn
+```
+
+**OPNsense config trap:** if you edit `config.xml` directly, Unbound settings live under
+`<OPNsense><unboundplus>`, **not** `<unbound>`. Editing the wrong element changes nothing and looks
+like the setting was ignored.
+
+---
+
+## Part 13 — The container host and the containers, concretely
+
+- [ ] **Step 1: Create the container-host VM with a NIC per segment**
+
+```bash
+qm create 310 --name cthost01 --memory 49152 --cores 6 --cpu host \
+  --scsihw virtio-scsi-single --scsi0 rangestore:200 \
+  --ostype l26 --agent enabled=1 --onboot 1
+for i in 10 20 30 40 45 60 70 99; do :; done   # see below - one NIC per segment
+qm set 310 --net0 virtio,bridge=vmbr20        # mgmt
+qm set 310 --net1 virtio,bridge=vmbr10
+qm set 310 --net2 virtio,bridge=vmbr30
+qm set 310 --net3 virtio,bridge=vmbr40
+qm set 310 --net4 virtio,bridge=vmbr45
+qm set 310 --net5 virtio,bridge=vmbr60
+qm set 310 --net6 virtio,bridge=vmbr70
+qm set 310 --net7 virtio,bridge=vmbr99
+```
+
+Use an Ubuntu 24.04 **cloud image + cloud-init** rather than an ISO — it is far less work and gives
+you a repeatable build. (The original build's notes are emphatic about this.)
+
+- [ ] **Step 2: Install Incus and create one profile per segment**
+
+```bash
+sudo apt update && sudo apt install -y incus
+sudo incus admin init --minimal
+
+# inside cthost01, bridge each NIC so containers can attach to the right segment
+# (ens19 etc. - confirm names with `ip -br link`)
+sudo incus profile create seg-servers
+sudo incus profile device add seg-servers eth0 nic nictype=bridged parent=br10 name=eth0
+sudo incus profile create seg-users
+sudo incus profile device add seg-users eth0 nic nictype=bridged parent=br20 name=eth0
+# ... repeat for br30 br40 br45 br60 br70 br99
+```
+
+- [ ] **Step 3: Launch containers onto their segments**
+
+```bash
+sudo incus launch images:debian/12 dc01   --profile default --profile seg-servers
+sudo incus launch images:debian/12 fs01   --profile default --profile seg-servers
+sudo incus launch images:debian/12 wk01   --profile default --profile seg-users
+sudo incus launch images:debian/12 cam01  --profile default --profile seg-otiot
+# ... etc per the catalogue in Part 11
+
+# static addressing per the estate
+sudo incus exec dc01 -- bash -c 'echo "auto eth0
+iface eth0 inet static
+  address 10.30.10.10/24
+  gateway 10.30.10.1" > /etc/network/interfaces.d/eth0'
+```
+
+> **`incus exec` consumes stdin.** If you run these from a script piped in via `ssh HOST 'bash -s'`,
+> **every** `incus exec` must end with `</dev/null` or your loop will silently exit after the first
+> container. This cost the original build real debugging time.
+
+- [ ] **Step 4: Verify every container is on the right segment and can reach its gateway**
+
+```bash
+for c in $(sudo incus list -c n --format csv); do
+  ip=$(sudo incus exec "$c" -- hostname -I </dev/null 2>/dev/null | awk '{print $1}')
+  gw=$(echo "$ip" | awk -F. '{print $1"."$2"."$3".1"}')
+  r=$(sudo incus exec "$c" -- timeout 3 ping -c1 -W1 "$gw" </dev/null >/dev/null 2>&1 && echo OK || echo FAIL)
+  printf '%-10s %-16s gw=%-16s %s\n' "$c" "$ip" "$gw" "$r"
+done
+```
+
+---
+
+## Part 14 — Windows guests, concretely
+
+- [ ] **Step 1: Create a Windows 10 LTSC workstation VM**
+
+```bash
+qm create 150 --name ws01 --memory 6144 --cores 2 --cpu host \
+  --machine q35 --bios ovmf --ostype win11 \
+  --efidisk0 rangestore:1,efitype=4m,pre-enrolled-keys=1 \
+  --tpmstate0 rangestore:1,version=v2.0 \
+  --scsihw virtio-scsi-single \
+  --scsi0 rangestore:64,discard=on,ssd=1 \
+  --net0 virtio,bridge=vmbr20 \
+  --ide2 local:iso/Win10_LTSC_2021.iso,media=cdrom \
+  --ide0 local:iso/virtio-win.iso,media=cdrom \
+  --agent enabled=1 --onboot 1
+qm start 150
+```
+
+Load the **virtio SCSI driver** from the second ISO during setup or Windows will not see the disk.
+Install the **QEMU guest agent** afterwards — you will want `qm guest exec` for automation.
+
+**Build ONE golden image, then clone.** But first read this, because it cost the original build a
+full rebuild of six guests:
+
+> **Scrub the golden image before cloning.** The original golden image carried the *builder's own*
+> environment into the range: house DNS servers, a remote-access agent, and Elastic/GHOSTS endpoints
+> pointing at real infrastructure. Every clone inherited it. Before you clone, verify:
+> `ipconfig /all` (DNS must be the range DC), no remote-access agents installed, and every agent
+> endpoint pointing at range addresses.
+
+- [ ] **Step 2: Deploy Sysmon from an upstream config**
+
+```powershell
+# RETRIEVE - never author detection content
+git clone https://github.com/olafhartong/sysmon-modular C:\tools\sysmon-modular
+cd C:\tools\sysmon-modular
+git rev-parse HEAD | Out-File C:\tools\sysmon-config-commit.txt   # record provenance
+.\Merge-SysmonXml.ps1 -AsString | Out-File -Encoding utf8 C:\tools\sysmonconfig.xml
+C:\tools\Sysmon64.exe -accepteula -i C:\tools\sysmonconfig.xml
+
+# verify it actually loaded the config you think it did
+C:\tools\Sysmon64.exe -c | Select-String -Pattern 'Config file|HashAlgorithms|Rule'
+```
+
+- [ ] **Step 3: Enable command-line auditing (4688 without it is nearly useless)**
+
+```powershell
+auditpol /set /subcategory:"Process Creation" /success:enable
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" `
+  /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f
+```
+
+- [ ] **Step 4: Enroll Elastic Agent and verify from BOTH ends**
+
+```powershell
+# the token is base64 and may end in '=' - never parse it with cut -d=
+.\elastic-agent.exe install `
+  --url=https://<so01>:8220 `
+  --enrollment-token=<TOKEN> `
+  --insecure
+Get-Service "Elastic Agent" | Format-List Name,Status      # NOTE: space in the name
+& "C:\Program Files\Elastic\Agent\elastic-agent.exe" status
+```
+
+Then confirm from the SIEM side — agent "healthy" does **not** prove data is arriving:
+
+```bash
+sudo curl -sSk -K /opt/so/conf/elasticsearch/curl.config \
+ "https://localhost:9200/logs-*/_search?size=0" -H 'Content-Type: application/json' -d '{
+ "query":{"bool":{"filter":[{"term":{"host.name":"ws01"}},
+   {"range":{"@timestamp":{"gte":"now-15m"}}}]}},
+ "aggs":{"ds":{"terms":{"field":"event.dataset","size":10}}}}'
+```
+
+Expected: `windows.sysmon_operational`, `windows.security`, and Defend's `endpoint.events.*`.
+**`host.name` is lowercase in Elasticsearch** — querying `WS01` returns zero and looks like failure.
+
+- [ ] **Step 5: Build Active Directory into a real company**
+
+Use the scripts in `tools/ad/` from this repo:
+
+```powershell
+.\tools\ad\populate-hr-attributes.ps1          # names, titles, departments, managers
+.\tools\ad\fix-names-and-clean-service-accounts.ps1
+.\tools\ad\enable-directory-change-auditing.ps1  # event 5136
+.\tools\ad\verify-hr-population.ps1              # VERIFY - do not assume
+```
+
+Then build the HR database so SIEM→HR pivots work:
+
+```bash
+python3 tools/db/load-corpdb-from-ad.py
+```
+
+A flat AD of 10 identically-named users teaches nothing. A 4-level org chart lets an analyst ask
+"is it normal for *this* person to touch *that* share?" — which is the actual hunting skill.
+
+---
+
+## Part 15 — The noise generator, in detail
+
+This is where realism is won or lost, and where the original build spent most of its effort. Start
+from `noise/containers/rangenoise.sh` in this repo, but understand these five properties — an
+analyst can defeat a range that misses any one of them.
+
+### 15.1 Diurnal shape
+
+Traffic must follow a working day. A flat 24-hour curve is the most obvious tell there is.
+
+```python
+import math, datetime
+
+def diurnal():
+    """Activity multiplier 0.05-1.0 for the current time."""
+    now = datetime.datetime.now()
+    h = now.hour + now.minute / 60.0
+    if now.weekday() >= 5:                      # weekend
+        return 0.15
+    if h < 6 or h > 20:
+        return 0.05
+    # peak mid-morning and mid-afternoon, dip at lunch
+    curve = math.exp(-((h - 10.0) ** 2) / 8.0) + 0.9 * math.exp(-((h - 14.5) ** 2) / 6.0)
+    return max(0.05, min(1.0, curve))
+```
+
+**Verify the curve is not inverted.** The original build ran an inverted curve for a while without
+noticing. Measure peak:trough per tier — target 4–8× for containers, 2–4× for Windows.
+
+### 15.2 Role awareness
+
+A camera, a phone and a workstation must not generate the same traffic. Give each role its own
+protocol mix and target list — and make that list **policy-legal** for the role's segment (Part 12).
+
+### 15.3 Client diversity
+
+Read Part 8.4 first. Implementation points that matter:
+
+- **Pick a TLS profile per host, seeded by hostname**, so a machine keeps a stable fingerprint the
+  way a real machine does. The *pool* must then be larger than your host count or fingerprints
+  collide: 31 hosts on a 12-entry pool gave 12 fingerprints; an 80-entry pool gave ~31.
+- **Vary user agents per host**, with a stable primary browser UA plus a minority of app agents
+  (updaters, package managers) — real hosts emit both.
+- **Keep a deliberate cleartext tier** (~10–15% HTTP) so there is something to read.
+
+### 15.4 TLS session resumption
+
+Real clients resume sessions. `curl` **cannot** do this across process invocations — every call is a
+fresh handshake — so a curl-only generator produces ~0% resumption, which is a glaring tell.
+
+```python
+import ssl, socket
+
+_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)      # ONE context, reused
+_ctx.check_hostname = False
+_ctx.verify_mode = ssl.CERT_NONE
+_sessions = {}
+
+def fetch_tls(host, port=443):
+    raw = socket.create_connection((host, port), timeout=5)
+    s = _ctx.wrap_socket(raw, server_hostname=host, session=_sessions.get(host))
+    _sessions[host] = s.session                     # hold it for next time
+    s.sendall(b"GET / HTTP/1.1\r\nHost: " + host.encode() + b"\r\nConnection: close\r\n\r\n")
+    s.recv(4096)
+    s.unwrap()                                      # clean TLS close -> clean TCP teardown
+    raw.close()
+    return s.session_reused
+```
+
+**Both sockets must share the same `SSLContext`**, and OpenSSL does not cache client sessions for
+you — you hold the `session` object yourself. Target ≥ 30% resumed.
+
+### 15.5 Do not let your own tooling become the traffic
+
+Everything you run generates telemetry. In the original build the simulation agent's API polling
+became **31% of all plaintext HTTP**, `auditd` was **78% self-noise** (`proctitle` and raw `syscall`
+records), and each SSH command batch produced 6 auth events until batched into one. Budget for this,
+and exclude control-plane traffic from realism gates by **destination**, after verifying the mapping
+1:1 in both directions (Part 8.5).
+
+---
+
+## Part 16 — GHOSTS: driving the Windows users
+
+GHOSTS (`cmu-sei/GHOSTS`) drives realistic user behaviour on Windows — browsing, Office documents,
+command execution. An API server schedules timelines; clients poll it.
+
+- [ ] **Step 1: Stand up the API**
+
+```bash
+git clone https://github.com/cmu-sei/GHOSTS
+cd GHOSTS/src
+docker compose up -d
+docker compose ps                       # API listening on :5000
+curl -s http://localhost:5000/api/home | head
+```
+
+- [ ] **Step 2: Install the client and confirm it REGISTERS**
+
+Point the client's `application.json` at `http://<ghosts01>:5000`. A running client is not a
+registered client — verify from the API side that the machine has a `machineId`:
+
+```bash
+curl -s http://<ghosts01>:5000/api/machines | python3 -m json.tool | head -30
+```
+
+- [ ] **Step 3: Author per-role timelines**
+
+Handlers: `BrowserFirefox`/`BrowserChrome`, `Word`, `Excel`, `Command`, `Ssh`. The `HandlerArgs`
+that actually matter:
+
+```json
+{
+  "HandlerArgs": {
+    "stickiness": 75,
+    "stickiness-depth-min": 3,
+    "stickiness-depth-max": 8,
+    "blockimages": true,
+    "isheadless": false
+  }
+}
+```
+
+**`stickiness` defaults to 0**, meaning every navigation jumps to a brand-new random site — nothing
+like real browsing. Setting ~75 makes the browser follow links within a site for 3–8 pages, which is
+both more realistic *and* substantially cuts handshake and Sysmon volume.
+
+> **Beware the interaction with Part 8.4.** Stickiness reduces TLS handshakes, because one connection
+> serves many page loads. That is *correct* browser behaviour, but it lowers your JA3 count. Do
+> **not** respond by reducing stickiness — fix diversity with more distinct clients instead. The
+> original build got this backwards and spent hours on it.
+
+- [ ] **Step 4: Verify GHOSTS is actually driving activity**
+
+```bash
+sudo curl -sSk -K /opt/so/conf/elasticsearch/curl.config \
+ "https://localhost:9200/logs-*/_search?size=0" -H 'Content-Type: application/json' -d '{
+ "query":{"bool":{"filter":[{"term":{"event.code":"1"}},
+   {"range":{"@timestamp":{"gte":"now-60m"}}}]}},
+ "aggs":{"p":{"terms":{"field":"process.name","size":15}}}}'
+```
+
+Expect browsers, Office binaries and shells — not just system processes.
+
+---
+
+## Part 17 — Velociraptor as an analysis station
+
+Per the locked stack: **no agents on endpoints.** The workflow you are building toward is:
+
+**detect in Kibana → triage with Defend's process telemetry → decide the host needs examination →
+run an offline collector → import into Velociraptor → timeline and prove it.**
+
+- [ ] **Step 1: Stand up the server and build an offline collector**
+
+In the GUI: *Server Artifacts → Offline Collector*. Choose artifacts (`Windows.KapeFiles.Targets`
+with `_SANS_Triage` is the usual choice) and produce a self-contained `.exe`.
+
+- [ ] **Step 2: Run it on a target, retrieve the zip, import it**
+
+That deliberate friction is the point — it is how real acquisition works and it forces the analyst
+to justify collection.
+
+**Design every exercise so the SIEM alone is insufficient**, the EDR narrows it, and Velociraptor
+proves it. If Kibana answers the whole question, the exercise is too easy.
+
+---
+
+## Part 18 — Hunting exercises worth building
+
+Once the baseline passes its gates, these shapes exploit what you have built:
+
+| Exercise | Uses | Why the baseline matters |
+|---|---|---|
+| Anomalous share access | AD org chart + SMB logs + HR database | Only detectable if a "normal" pattern exists |
+| Beaconing in the noise | Diurnal traffic + domain pool | A flat curve makes the beacon trivial to spot |
+| Rogue device on GUEST | Policy matrix + logged denies | Denies must be logged and ordinary-looking |
+| Lateral movement | BZAR / SMB / Kerberos | Needs east-west SPAN; egress-only sensors cannot see it |
+| Credential theft → pivot | 4624/4625 + process telemetry | Needs per-host user assignment, not one shared account |
+| Data staging + exfil | File server + proxy + byte volumes | Needs a realistic byte-tail distribution |
+
+**Rotation is the anti-memorisation control.** Use one shared domain pool for *both* benign browsing
+and C2, rotating per exercise, so the pool can never itself become the indicator. The analyst must
+hunt behaviour, not recognise names from last session.
+
+---
+
+## Part 19 — Build order, and the day-one checklist
+
+Do it in this order. Each line is gated on the one above actually working.
+
+- [ ] **1.** C240 M4: JBOD via `Ctrl+R`, VT-x/VT-d on, CIMC reachable (Part 1)
+- [ ] **2.** Proxmox + ZFS pool on `/dev/disk/by-id`, ARC capped at 32 GB (Part 3.1)
+- [ ] **3.** Bridges: uplink + one per segment + SPAN bridge with learning off (Part 3.2)
+- [ ] **4.** `fw01` OPNsense: VLAN gateways, policy matrix, logged denies (Part 12)
+- [ ] **5.** `so01` Security Onion standalone, ES heap 31 GB, cluster GREEN (Parts 4.1, 2.3)
+- [ ] **6.** SPAN mirrors per segment via **veth**; prove every VLAN with tcpdump (Part 4.2)
+- [ ] **7.** `cthost01` + Incus + one profile per segment (Part 13)
+- [ ] **8.** Container estate per the catalogue; verify each reaches its gateway (Parts 11.1, 13)
+- [ ] **9.** Internal CA; reissue certs so DNS name = SNI = cert name (Part 11.1)
+- [ ] **10.** Windows DC + workstations from a **scrubbed** golden image (Part 14)
+- [ ] **11.** Sysmon (upstream, hash recorded) + cmdline auditing + Elastic Agent (Part 14)
+- [ ] **12.** AD → real org chart + HR database (Part 14, Step 5)
+- [ ] **13.** Noise generators, role-aware and diurnal (Part 15)
+- [ ] **14.** GHOSTS API + per-role timelines (Part 16)
+- [ ] **15.** Gate harness on a timer, appending JSON (Part 8)
+- [ ] **16.** Tune volume to 5–10k/endpoint/day (Part 7)
+- [ ] **17.** Velociraptor + offline collector workflow (Part 17)
+- [ ] **18.** **Only now** — adversary emulation (Part 10)
+
+### The five checks to run before believing any of it
+
+```bash
+# 1. every VLAN reaches the sensor
+sudo timeout 30 tcpdump -nni <monitor-if> -e | grep -oE 'vlan [0-9]+' | sort | uniq -c
+
+# 2. cluster health
+sudo curl -sSk -K /opt/so/conf/elasticsearch/curl.config "https://localhost:9200/_cluster/health?pretty"
+
+# 3. every endpoint is shipping
+sudo curl -sSk -K /opt/so/conf/elasticsearch/curl.config \
+ "https://localhost:9200/logs-*/_search?size=0" -H 'Content-Type: application/json' \
+ -d '{"query":{"range":{"@timestamp":{"gte":"now-30m"}}},
+      "aggs":{"h":{"terms":{"field":"host.name","size":50}}}}'
+
+# 4. connection failure rate - S0+REJ only, NOT "not SF" (see Part 8.2 for why)
+
+# 5. no egress escapes the range: from a range host, attempt to reach your own
+#    LAN and the internet. BOTH must fail.
+```
+
+**If any of the five is not measured, the range is not built — it is only running.**
+
+---
+
 ## Appendix A — Traps, each of which cost real time
 
 | Trap | Symptom | Fix |
