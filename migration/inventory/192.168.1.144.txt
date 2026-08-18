@@ -1,0 +1,1065 @@
+### cthuwu 2026-08-18T11:29:06Z
+pve-manager/8.4.19/a68fb383814bb1e6 (running kernel: 6.8.12-39-pve)
+6.8.12-39-pve
+CPU(s):                                  48
+Model name:                              AMD Ryzen Threadripper 3960X 24-Core Processor
+--- memory (GB)
+               total        used        free      shared  buff/cache   available
+Mem:             125          60          30           0          37          64
+--- guests
+      VMID NAME                 STATUS     MEM(MB)    BOOTDISK(GB) PID       
+       100 rick                 running    6144            1863.02 3145750   
+       101 flare-vm             stopped    8192             120.00 0         
+       102 velociraptor01       stopped    8192              60.00 0         
+       130 sandbox01            stopped    4096              21.50 0         
+       140 soc-wazuh            stopped    8192              43.50 0         
+       141 dfir-ws              stopped    8192              62.20 0         
+       142 remnux               stopped    8192             100.00 0         
+       143 sift-ws              stopped    8192              80.00 0         
+       146 kali                 running    4096              45.00 138919    
+       150 range-dc01           running    6144              60.00 2423670   
+       151 range-FS01           running    6144              60.00 2444106   
+       152 range-SQL01          running    6144              60.00 2444520   
+       153 range-WEB01          running    6144              60.00 2444994   
+       154 range-WS01           running    4096              60.00 2445270   
+       155 range-WS02           running    4096              60.00 2445692   
+       160 range-linux-web      stopped    4096              21.50 0         
+       161 ghosts01             running    6144              33.50 2931171   
+       200 golden-desktop       stopped    6144              23.50 0         
+       210 redinfra01           stopped    6144              33.50 0         
+       300 fw01                 running    4096              32.00 1860308   
+       310 cthost01             running    24576            200.00 1852647   
+      3010 irtest-win10ent      stopped    8192              64.00 0         
+      3011 irtest-win11ent      stopped    8192              64.00 0         
+      3012 irtest-ubuntu        stopped    4096              27.50 0         
+      3013 irtest-rocky9        stopped    4096              34.00 0         
+      3020 relics-vm            stopped    12288            119.50 0         
+      9000 ubuntu-noble-tmpl    stopped    2048               3.50 0         
+      9001 ubuntu-jammy-tmpl    stopped    2048               2.20 0         
+VMID       Status     Lock         Name                
+400        running                 ghosts-api          
+=== VM 100
+agent: 1
+balloon: 6144
+bios: ovmf
+boot: order=scsi0
+cores: 12
+cpu: host
+description: **RICK** - the main Ubuntu workstation VM.%0ASegment%3A vmbr0 / 10.20.0.152 - **the only segment with internet**.%0ARuns%3A ollama (RTX 4090 passthrough), docker (rustdesk-server, immudb, ntfy, rem-qdrant), postgres.%0ADisk%3A vmstore ZFS (migrated off raw passthrough 2026-08-01).
+efidisk0: local:100/vm-100-disk-0.raw,efitype=4m,pre-enrolled-keys=0,size=528K
+hostpci0: 0000:01:00,pcie=1
+machine: q35
+memory: 6144
+meta: creation-qemu=9.2.0,ctime=1785005206
+name: rick
+net0: virtio=BC:24:11:86:A8:43,bridge=vmbr0
+onboot: 1
+ostype: l26
+scsi0: vmstore:vm-100-disk-0,size=1953514592K
+scsihw: virtio-scsi-single
+smbios1: uuid=6f372ee3-922d-486b-a176-ebd820432ad9
+vmgenid: 82eb17ea-6e34-46cb-bc6a-6dddbf028a05
+=== VM 101
+agent: 1
+balloon: 4096
+bios: seabios
+boot: order=scsi0
+cores: 6
+cpu: host
+description: **FLARE-VM** - Mandiant malware reverse-engineering toolkit (137 packages).%0AWindows 10 Enterprise x64. Built 2026-08-01 for the CyberLab reference guide.%0ASegment%3A vmbr0 during install (needs internet for chocolatey), then MOVE TO vmbr40 (SOC, no egress).%0AInstall%3A iwr https%3A//raw.githubusercontent.com/mandiant/flare-vm/main/install.ps1 -OutFile install.ps1
+ide0: none,media=cdrom
+ide2: none,media=cdrom
+machine: pc
+memory: 8192
+meta: creation-qemu=9.2.0,ctime=1785631081
+name: flare-vm
+net0: virtio=BC:24:11:9F:35:F2,bridge=vmbr0
+onboot: 0
+ostype: win10
+sata0: local:iso/virtio-win.iso,media=cdrom,size=771138K
+scsi0: vmstore:vm-101-disk-1,cache=writeback,discard=on,size=120G,ssd=1
+scsihw: virtio-scsi-single
+smbios1: uuid=565c93fd-671e-403e-ac9c-c1f4e4a6ceae
+unused0: vmstore:vm-101-disk-0
+vmgenid: a0cf8987-624b-446c-ba99-1fab076f5dc1
+=== VM 102
+agent: enabled=1
+boot: order=scsi0
+cipassword: **********
+ciupgrade: 0
+ciuser: rocky
+cores: 4
+cpu: host
+ide2: vmstore:vm-102-cloudinit,media=cdrom
+ipconfig0: ip=10.20.40.10/24,gw=10.20.40.1
+machine: q35
+memory: 8192
+meta: creation-qemu=9.2.0,ctime=1785728764
+name: velociraptor01
+nameserver: 10.20.40.1
+net0: virtio=BC:24:11:61:30:A6,bridge=vmbr40
+onboot: 0
+ostype: l26
+scsi0: vmstore:vm-102-disk-0,discard=on,size=60G,ssd=1
+scsihw: virtio-scsi-single
+searchdomain: lab.local
+serial0: socket
+smbios1: uuid=c7d0a5f9-5f1d-4e4a-a830-a51bab3d500d
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDGX4gCk3TdPwDlSe%2B8WjGd6T60I20SaSQ48EFdllLex%20laptop%0A
+vga: serial0
+vmgenid: 32bb49c8-8383-4cf1-97ff-8e03192bcb08
+=== VM 130
+agent: 1
+balloon: 1024
+boot: order=scsi0
+ciuser: labadmin
+cores: 4
+cpu: host
+description: SANDBOX - detonation host.%0ASegment%3A vmbr30 / 10.20.30.0/24 - **NO INTERNET, host DNS blocked**.
+ide2: local:130/vm-130-cloudinit.qcow2,media=cdrom,size=4M
+ipconfig0: ip=dhcp
+machine: q35
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1785005613
+name: sandbox01
+net0: virtio=BC:24:11:8A:70:99,bridge=vmbr30
+onboot: 0
+ostype: l26
+parent: known-good-20260801
+scsi0: vmdata:vm-130-disk-0,size=22016M
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=e609c3d7-8efb-4c8d-89e1-51fcb8c2c942
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIIE9mELMGv0EptHf1fYlSCxL9Y9Q6LmyTlHO9Q65fOvu%20m808b%40windows%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDGX4gCk3TdPwDlSe%2B8WjGd6T60I20SaSQ48EFdllLex%20laptop%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIOxJ%2FCbvvUT45WQc2LAjrH%2FugbS%2FEM08mKPP0R1XbrZZ%20redzeplin%40ricksanchez%0Assh-rsa%20AAAAB3NzaC1yc2EAAAADAQABAAACAQCg%2BxoG39jW4B4VGiG1jZ1vo35%2BtavSEbHa7iBuUMslNR4wJcxpWokmANiInXX2Y%2FDG81MLBUK1nFEB1uHxn8YuMqV5KSUKN%2FuRqcoFiCqydJoCfssOxSRVrvOnsKmCH1ZpfRppb4mg66RTyj6U1nMH3BIYygVKIhHmd9BiXY5MYMnUQauQWugDa2dpYcAuBMtIqVTK%2Bg2F6c7khz6TrQB8pt7VFztl%2B4RFydCdxOvxnCsT3QjeYDzmXhB9bVm9EV0APxszBEk9HENK8Jn2knHBlDTccCREt9eMYf6JpPFGLXyG%2FsKsh9tPIQrvXZpjbnPgf7PHw3rPQS%2FQxqzsSKswNdBBryGlD%2Fd42O%2By1Vwr16EupA6n9n514KAt6r0N84P49aqEu7EWLa2E9qRxuXtNCwTUMaW%2FROwsb5xtzru9whS7Cg7zi6ApzAD%2B6BWERS%2BfmKQSMAOKQuRd4CDAJTE%2F1AJlKK5Ldl7qYelcr2Z3DrwRpLwD33c2Wpb8bdVk9kwYnL4cJC0jI5fUM83s9L2OtRifzFFC0c2dMAoCbdx%2BmlIk8D9vSyjkRQNy2i1c1ZqnhOJiMVTOhehXOXVyar8MuaJ7omDVJhFJcwsVct0dJMkbO2VfqwOPP2fkiavBUGWFloh7hLBOoxFWnjiSnpCPuqSiPn0JDWO6tIDjaiAvTw%3D%3D%20root%40rick-pve%0A
+vga: serial0
+vmgenid: 28968062-2b1e-47b4-83bd-35806a6e6a9d
+=== VM 140
+agent: 1
+boot: order=scsi0
+ciuser: labadmin
+cores: 4
+cpu: host
+description: SOC - Wazuh manager.%0ASegment%3A vmbr40 / 10.20.40.0/24 - **NO INTERNET** (host DNS allowed).
+ide2: local:140/vm-140-cloudinit.qcow2,media=cdrom,size=4M
+ipconfig0: ip=10.20.40.10/24,gw=10.20.40.1
+machine: q35
+memory: 8192
+meta: creation-qemu=9.2.0,ctime=1785005613
+name: soc-wazuh
+nameserver: 1.1.1.1
+net0: virtio=BC:24:11:BB:D1:77,bridge=vmbr40
+onboot: 0
+ostype: l26
+parent: known-good-20260801
+scsi0: vmdata:vm-140-disk-0,size=44544M
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=6ed091ec-d812-4776-9a43-5c3772dde0f6
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIIE9mELMGv0EptHf1fYlSCxL9Y9Q6LmyTlHO9Q65fOvu%20m808b%40windows%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDGX4gCk3TdPwDlSe%2B8WjGd6T60I20SaSQ48EFdllLex%20laptop%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIOxJ%2FCbvvUT45WQc2LAjrH%2FugbS%2FEM08mKPP0R1XbrZZ%20redzeplin%40ricksanchez%0Assh-rsa%20AAAAB3NzaC1yc2EAAAADAQABAAACAQCg%2BxoG39jW4B4VGiG1jZ1vo35%2BtavSEbHa7iBuUMslNR4wJcxpWokmANiInXX2Y%2FDG81MLBUK1nFEB1uHxn8YuMqV5KSUKN%2FuRqcoFiCqydJoCfssOxSRVrvOnsKmCH1ZpfRppb4mg66RTyj6U1nMH3BIYygVKIhHmd9BiXY5MYMnUQauQWugDa2dpYcAuBMtIqVTK%2Bg2F6c7khz6TrQB8pt7VFztl%2B4RFydCdxOvxnCsT3QjeYDzmXhB9bVm9EV0APxszBEk9HENK8Jn2knHBlDTccCREt9eMYf6JpPFGLXyG%2FsKsh9tPIQrvXZpjbnPgf7PHw3rPQS%2FQxqzsSKswNdBBryGlD%2Fd42O%2By1Vwr16EupA6n9n514KAt6r0N84P49aqEu7EWLa2E9qRxuXtNCwTUMaW%2FROwsb5xtzru9whS7Cg7zi6ApzAD%2B6BWERS%2BfmKQSMAOKQuRd4CDAJTE%2F1AJlKK5Ldl7qYelcr2Z3DrwRpLwD33c2Wpb8bdVk9kwYnL4cJC0jI5fUM83s9L2OtRifzFFC0c2dMAoCbdx%2BmlIk8D9vSyjkRQNy2i1c1ZqnhOJiMVTOhehXOXVyar8MuaJ7omDVJhFJcwsVct0dJMkbO2VfqwOPP2fkiavBUGWFloh7hLBOoxFWnjiSnpCPuqSiPn0JDWO6tIDjaiAvTw%3D%3D%20root%40rick-pve%0A
+vga: serial0
+vmgenid: f3a24874-064e-46cc-97f1-e815b90e3f7b
+=== VM 141
+agent: 1
+boot: order=scsi0
+ciuser: labadmin
+cores: 6
+cpu: host
+description: SOC - DFIR workstation.%0ASegment%3A vmbr40 - NO INTERNET.
+ide2: local:141/vm-141-cloudinit.qcow2,media=cdrom,size=4M
+ipconfig0: ip=10.20.40.20/24,gw=10.20.40.1
+machine: q35
+memory: 8192
+meta: creation-qemu=9.2.0,ctime=1785017832
+name: dfir-ws
+nameserver: 1.1.1.1
+net0: virtio=BC:24:11:71:6E:D1,bridge=vmbr40
+onboot: 0
+ostype: l26
+parent: known-good-20260801
+scsi0: vmdata:vm-141-disk-0,size=63692M
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=adf5dd14-02b8-4fff-9401-ae88e4013e6c
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIIE9mELMGv0EptHf1fYlSCxL9Y9Q6LmyTlHO9Q65fOvu%20m808b%40windows%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDGX4gCk3TdPwDlSe%2B8WjGd6T60I20SaSQ48EFdllLex%20laptop%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIOxJ%2FCbvvUT45WQc2LAjrH%2FugbS%2FEM08mKPP0R1XbrZZ%20redzeplin%40ricksanchez%0Assh-rsa%20AAAAB3NzaC1yc2EAAAADAQABAAACAQCg%2BxoG39jW4B4VGiG1jZ1vo35%2BtavSEbHa7iBuUMslNR4wJcxpWokmANiInXX2Y%2FDG81MLBUK1nFEB1uHxn8YuMqV5KSUKN%2FuRqcoFiCqydJoCfssOxSRVrvOnsKmCH1ZpfRppb4mg66RTyj6U1nMH3BIYygVKIhHmd9BiXY5MYMnUQauQWugDa2dpYcAuBMtIqVTK%2Bg2F6c7khz6TrQB8pt7VFztl%2B4RFydCdxOvxnCsT3QjeYDzmXhB9bVm9EV0APxszBEk9HENK8Jn2knHBlDTccCREt9eMYf6JpPFGLXyG%2FsKsh9tPIQrvXZpjbnPgf7PHw3rPQS%2FQxqzsSKswNdBBryGlD%2Fd42O%2By1Vwr16EupA6n9n514KAt6r0N84P49aqEu7EWLa2E9qRxuXtNCwTUMaW%2FROwsb5xtzru9whS7Cg7zi6ApzAD%2B6BWERS%2BfmKQSMAOKQuRd4CDAJTE%2F1AJlKK5Ldl7qYelcr2Z3DrwRpLwD33c2Wpb8bdVk9kwYnL4cJC0jI5fUM83s9L2OtRifzFFC0c2dMAoCbdx%2BmlIk8D9vSyjkRQNy2i1c1ZqnhOJiMVTOhehXOXVyar8MuaJ7omDVJhFJcwsVct0dJMkbO2VfqwOPP2fkiavBUGWFloh7hLBOoxFWnjiSnpCPuqSiPn0JDWO6tIDjaiAvTw%3D%3D%20root%40rick-pve%0A
+vga: serial0
+vmgenid: 83051b6c-f4d5-40fa-aa60-4db17783963b
+=== VM 142
+agent: enabled=1
+boot: order=scsi0
+cores: 4
+cpu: host
+description: SOC - REMnux (malware analysis).%0ASegment%3A vmbr40 - NO INTERNET.
+memory: 8192
+meta: creation-qemu=9.2.0,ctime=1785499731
+name: remnux
+net0: virtio=BC:24:11:2B:20:0B,bridge=vmbr40
+onboot: 0
+ostype: l26
+parent: known-good-20260801
+scsi0: vmdata:vm-142-disk-0,size=100G
+scsihw: virtio-scsi-single
+smbios1: uuid=5b51e572-304d-4314-bfc9-31bb3a5c156d
+sockets: 1
+vmgenid: 9d8c2fb2-4215-476b-92d1-98d6ae3e2275
+=== VM 143
+agent: enabled=1
+boot: order=scsi0
+ciuser: labadmin
+cores: 4
+cpu: host
+description: SOC - SIFT workstation (forensics).%0ASegment%3A vmbr40 - NO INTERNET.
+ide2: vmdata:vm-143-cloudinit,media=cdrom
+ipconfig0: ip=10.20.40.21/24,gw=10.20.40.1
+memory: 8192
+meta: creation-qemu=9.2.0,ctime=1785499959
+name: sift-ws
+nameserver: 10.20.40.1
+net0: virtio=BC:24:11:E6:62:32,bridge=vmbr40
+onboot: 0
+ostype: l26
+parent: known-good-20260801
+scsi0: vmdata:vm-143-disk-0,size=80G
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=c061b04d-67aa-460b-a904-52fa90c29407
+sockets: 1
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAICFeTpcDQk0U8e4pP%2Bb%2B3KgAu5emiqmVyQv6SYZIJZr%2F%20cthuwu-lab%0A
+vga: serial0
+vmgenid: 6ee5035b-ba11-49ff-ba8b-ee1401422ad4
+=== VM 146
+agent: 1
+balloon: 2048
+boot: order=scsi0
+cipassword: **********
+ciuser: kali
+cores: 4
+cpu: host
+description: SOC - Kali (offensive tooling).%0ASegment%3A vmbr40 - NO INTERNET.
+ide2: local:146/vm-146-cloudinit.qcow2,media=cdrom
+ipconfig0: ip=10.20.40.30/24,gw=10.20.40.1
+machine: q35
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1785055652
+name: kali
+nameserver: 1.1.1.1
+net0: virtio=BC:24:11:AD:1B:39,bridge=vmbr40
+onboot: 1
+ostype: l26
+parent: known-good-20260801
+scsi0: vmdata:vm-146-disk-0,size=45G
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=2a5e0493-6154-44d2-95cf-8ad4222f1738
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAICFeTpcDQk0U8e4pP%2Bb%2B3KgAu5emiqmVyQv6SYZIJZr%2F%20cthuwu-lab%0A
+vga: std
+vmgenid: 59d5a682-e771-4a7c-82cc-0e4a1361392b
+=== VM 150
+agent: 1
+balloon: 3072
+bios: ovmf
+boot: order=scsi0;ide2
+cores: 4
+cpu: host
+description: AD RANGE - Domain Controller (dc01).%0ASegment%3A vmbr50 / 10.20.50.0/24 - **NO INTERNET, host DNS blocked**.
+efidisk0: local:150/vm-150-disk-0.qcow2,efitype=4m,pre-enrolled-keys=0,size=528K
+ide0: local:iso/virtio-win.iso,media=cdrom,size=771138K
+ide2: local:iso/virtio-win.iso,media=cdrom,size=771138K
+localtime: 0
+machine: pc-q35-9.2+pve1
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1785012041
+name: range-dc01
+net0: virtio=BC:24:11:5C:F3:FD,bridge=vmbr61,firewall=0,tag=10
+onboot: 1
+ostype: win11
+parent: known-good-20260801
+sata0: local:iso/dc01-seed.iso,media=cdrom,size=470K
+scsi0: vmdata:vm-150-disk-0,size=60G
+scsihw: virtio-scsi-single
+smbios1: uuid=7fd51dd5-7d61-48c7-89ac-1eac82918979
+unused0: local:150/vm-150-disk-0.raw
+vmgenid: 864c85e9-b020-45df-aedf-ebf4ca1d4a2f
+=== VM 151
+agent: 1
+balloon: 3072
+bios: ovmf
+boot: order=scsi0;ide2
+cores: 4
+cpu: host
+description: AD RANGE - File server (FS01).%0ASegment%3A vmbr50 - NO INTERNET.
+efidisk0: local:151/vm-151-disk-0.qcow2,efitype=4m,pre-enrolled-keys=0,size=528K
+ide0: local:iso/virtio-win.iso,media=cdrom,size=771138K
+ide2: local:iso/virtio-win.iso,media=cdrom,size=771138K
+localtime: 0
+machine: pc-q35-9.2+pve1
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1785013080
+name: range-FS01
+net0: virtio=BC:24:11:1A:9A:2F,bridge=vmbr61,firewall=0,tag=10
+onboot: 1
+ostype: win11
+parent: known-good-20260801
+sata0: local:iso/seed-FS01.iso,media=cdrom,size=374K
+scsi0: vmdata:vm-151-disk-0,size=60G
+scsihw: virtio-scsi-single
+smbios1: uuid=e8c9f74f-8487-4483-89a0-dd6fd3963aef
+unused0: local:151/vm-151-disk-0.raw
+vmgenid: 93d248fe-aef3-42a4-8bff-e86e948042f5
+=== VM 152
+agent: 1
+balloon: 3072
+bios: ovmf
+boot: order=scsi0;ide2
+cores: 4
+cpu: host
+description: AD RANGE - SQL server (SQL01).%0ASegment%3A vmbr50 - NO INTERNET.
+efidisk0: local:152/vm-152-disk-0.qcow2,efitype=4m,pre-enrolled-keys=0,size=528K
+ide0: local:iso/virtio-win.iso,media=cdrom,size=771138K
+ide2: local:iso/virtio-win.iso,media=cdrom,size=771138K
+localtime: 0
+machine: pc-q35-9.2+pve1
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1785013136
+name: range-SQL01
+net0: virtio=BC:24:11:52:46:3E,bridge=vmbr61,firewall=0,tag=10
+onboot: 1
+ostype: win11
+parent: known-good-20260801
+sata0: local:iso/seed-SQL01.iso,media=cdrom,size=374K
+scsi0: vmdata:vm-152-disk-0,size=60G
+scsihw: virtio-scsi-single
+smbios1: uuid=9eff90c1-753f-4233-825a-c9d03d70a676
+unused0: local:152/vm-152-disk-0.raw
+vmgenid: ed194679-9a7d-41d9-955d-f4b6bc55a8fc
+=== VM 153
+agent: 1
+balloon: 3072
+bios: ovmf
+boot: order=scsi0
+cores: 4
+cpu: host
+description: AD RANGE - Web server (WEB01).%0ASegment%3A vmbr50 - NO INTERNET.
+efidisk0: local:153/vm-153-disk-0.qcow2,efitype=4m,pre-enrolled-keys=0,size=528K
+ide0: local:iso/virtio-win.iso,media=cdrom,size=771138K
+ide2: local:iso/winsrv2022-eval.iso,media=cdrom,size=5420734K
+machine: pc-q35-9.2+pve1
+memory: 6144
+meta: creation-qemu=9.2.0,ctime=1785013108
+name: range-WEB01
+net0: virtio=BC:24:11:46:6B:41,bridge=vmbr61,firewall=0,tag=30
+onboot: 1
+ostype: win11
+parent: known-good-20260801
+sata0: local:iso/seed-WEB01.iso,media=cdrom,size=374K
+scsi0: vmdata:vm-153-disk-0,size=60G
+scsihw: virtio-scsi-single
+smbios1: uuid=00588c2a-c040-47e4-939e-c4609d371c8b
+unused0: local:153/vm-153-disk-0.raw
+vmgenid: 39db5fca-0b7f-4d08-89d4-989e0f4c0325
+=== VM 154
+agent: 1
+balloon: 2048
+bios: ovmf
+boot: order=scsi0;ide2
+cores: 4
+cpu: host
+description: AD RANGE - Workstation 1 (WS01).%0ASegment%3A vmbr50 - NO INTERNET.
+efidisk0: local:154/vm-154-disk-0.qcow2,efitype=4m,pre-enrolled-keys=0,size=528K
+ide0: local:iso/virtio-win.iso,media=cdrom,size=771138K
+ide2: local:iso/virtio-win.iso,media=cdrom,size=771138K
+localtime: 0
+machine: pc-q35-9.2+pve1
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1785013165
+name: range-WS01
+net0: virtio=BC:24:11:9B:C7:66,bridge=vmbr61,firewall=0,tag=20
+onboot: 1
+ostype: win11
+parent: known-good-20260801
+sata0: local:iso/seed-WS01.iso,media=cdrom,size=374K
+scsi0: vmdata:vm-154-disk-0,size=60G
+scsihw: virtio-scsi-single
+smbios1: uuid=01f2bda3-b72b-4515-bb4d-b490dfe70265
+unused0: local:154/vm-154-disk-0.raw
+unused1: local:154/vm-154-disk-1.raw
+vmgenid: 18a94e53-d910-4b42-9547-55b237500ed2
+=== VM 155
+agent: 1
+balloon: 2048
+bios: ovmf
+boot: order=scsi0;ide2
+cores: 4
+cpu: host
+description: AD RANGE - Workstation 2 (WS02).%0ASegment%3A vmbr50 - NO INTERNET.
+efidisk0: local:155/vm-155-disk-0.qcow2,efitype=4m,pre-enrolled-keys=0,size=528K
+ide0: local:iso/virtio-win.iso,media=cdrom,size=771138K
+ide2: local:iso/virtio-win.iso,media=cdrom,size=771138K
+localtime: 0
+machine: pc-q35-9.2+pve1
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1785013193
+name: range-WS02
+net0: virtio=BC:24:11:E3:BD:25,bridge=vmbr61,firewall=0,tag=20
+onboot: 1
+ostype: win11
+parent: known-good-20260801
+sata0: local:iso/seed-WS02.iso,media=cdrom,size=374K
+scsi0: vmdata:vm-155-disk-0,size=60G
+scsihw: virtio-scsi-single
+smbios1: uuid=c3199323-a5aa-4eb0-b9d8-adbbb37f33f4
+unused0: local:155/vm-155-disk-1.raw
+unused1: local:155/vm-155-disk-0.raw
+vmgenid: edb57e28-37b3-45f3-b0ba-81946d69de82
+=== VM 160
+agent: 1
+balloon: 2048
+boot: order=scsi0
+ciuser: labadmin
+cores: 4
+cpu: host
+description: AD RANGE - Linux web target.%0ASegment%3A vmbr50 - NO INTERNET.
+ide2: local:160/vm-160-cloudinit.qcow2,media=cdrom,size=4M
+ipconfig0: ip=10.20.50.60/24,gw=10.20.50.1
+machine: q35
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1785005613
+name: range-linux-web
+nameserver: 10.20.50.233
+net0: virtio=BC:24:11:01:EE:89,bridge=vmbr61,firewall=0,tag=30
+onboot: 0
+ostype: l26
+parent: known-good-20260801
+scsi0: vmdata:vm-160-disk-0,size=22016M
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=bb00e1a8-5cdb-4b51-aae3-cef47795a9a7
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIIE9mELMGv0EptHf1fYlSCxL9Y9Q6LmyTlHO9Q65fOvu%20m808b%40windows%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDGX4gCk3TdPwDlSe%2B8WjGd6T60I20SaSQ48EFdllLex%20laptop%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIOxJ%2FCbvvUT45WQc2LAjrH%2FugbS%2FEM08mKPP0R1XbrZZ%20redzeplin%40ricksanchez%0Assh-rsa%20AAAAB3NzaC1yc2EAAAADAQABAAACAQCg%2BxoG39jW4B4VGiG1jZ1vo35%2BtavSEbHa7iBuUMslNR4wJcxpWokmANiInXX2Y%2FDG81MLBUK1nFEB1uHxn8YuMqV5KSUKN%2FuRqcoFiCqydJoCfssOxSRVrvOnsKmCH1ZpfRppb4mg66RTyj6U1nMH3BIYygVKIhHmd9BiXY5MYMnUQauQWugDa2dpYcAuBMtIqVTK%2Bg2F6c7khz6TrQB8pt7VFztl%2B4RFydCdxOvxnCsT3QjeYDzmXhB9bVm9EV0APxszBEk9HENK8Jn2knHBlDTccCREt9eMYf6JpPFGLXyG%2FsKsh9tPIQrvXZpjbnPgf7PHw3rPQS%2FQxqzsSKswNdBBryGlD%2Fd42O%2By1Vwr16EupA6n9n514KAt6r0N84P49aqEu7EWLa2E9qRxuXtNCwTUMaW%2FROwsb5xtzru9whS7Cg7zi6ApzAD%2B6BWERS%2BfmKQSMAOKQuRd4CDAJTE%2F1AJlKK5Ldl7qYelcr2Z3DrwRpLwD33c2Wpb8bdVk9kwYnL4cJC0jI5fUM83s9L2OtRifzFFC0c2dMAoCbdx%2BmlIk8D9vSyjkRQNy2i1c1ZqnhOJiMVTOhehXOXVyar8MuaJ7omDVJhFJcwsVct0dJMkbO2VfqwOPP2fkiavBUGWFloh7hLBOoxFWnjiSnpCPuqSiPn0JDWO6tIDjaiAvTw%3D%3D%20root%40rick-pve%0A
+vga: serial0
+vmgenid: 6685e830-ee24-4116-ad7a-71ef2705c2ab
+=== VM 161
+agent: 1
+balloon: 4096
+boot: order=scsi0
+ciuser: labadmin
+cores: 4
+cpu: host
+description: TEMPLATE - Ubuntu Noble cloud image.%0ASegment%3A vmbr30 - NO INTERNET.
+ide2: local:161/vm-161-cloudinit.qcow2,media=cdrom,size=4M
+ipconfig0: ip=10.31.10.20/24
+ipconfig1: ip=10.20.0.70/24,gw=10.20.0.1
+machine: q35
+memory: 6144
+meta: creation-qemu=9.2.0,ctime=1785005613
+name: ghosts01
+nameserver: 10.20.0.1 1.1.1.1
+net0: virtio=BC:24:11:80:CA:B9,bridge=vmbr61,tag=10
+net1: virtio=BC:24:11:EC:12:77,bridge=vmbr0
+onboot: 1
+ostype: l26
+scsi0: vmdata:vm-161-disk-0,size=34304M
+scsihw: virtio-scsi-single
+searchdomain: lab.local
+serial0: socket
+smbios1: uuid=251e3d25-4829-4015-9f1e-dd26d7f89a6b
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIIE9mELMGv0EptHf1fYlSCxL9Y9Q6LmyTlHO9Q65fOvu%20m808b%40windows%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDGX4gCk3TdPwDlSe%2B8WjGd6T60I20SaSQ48EFdllLex%20laptop%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIOxJ%2FCbvvUT45WQc2LAjrH%2FugbS%2FEM08mKPP0R1XbrZZ%20redzeplin%40ricksanchez%0Assh-rsa%20AAAAB3NzaC1yc2EAAAADAQABAAACAQCg%2BxoG39jW4B4VGiG1jZ1vo35%2BtavSEbHa7iBuUMslNR4wJcxpWokmANiInXX2Y%2FDG81MLBUK1nFEB1uHxn8YuMqV5KSUKN%2FuRqcoFiCqydJoCfssOxSRVrvOnsKmCH1ZpfRppb4mg66RTyj6U1nMH3BIYygVKIhHmd9BiXY5MYMnUQauQWugDa2dpYcAuBMtIqVTK%2Bg2F6c7khz6TrQB8pt7VFztl%2B4RFydCdxOvxnCsT3QjeYDzmXhB9bVm9EV0APxszBEk9HENK8Jn2knHBlDTccCREt9eMYf6JpPFGLXyG%2FsKsh9tPIQrvXZpjbnPgf7PHw3rPQS%2FQxqzsSKswNdBBryGlD%2Fd42O%2By1Vwr16EupA6n9n514KAt6r0N84P49aqEu7EWLa2E9qRxuXtNCwTUMaW%2FROwsb5xtzru9whS7Cg7zi6ApzAD%2B6BWERS%2BfmKQSMAOKQuRd4CDAJTE%2F1AJlKK5Ldl7qYelcr2Z3DrwRpLwD33c2Wpb8bdVk9kwYnL4cJC0jI5fUM83s9L2OtRifzFFC0c2dMAoCbdx%2BmlIk8D9vSyjkRQNy2i1c1ZqnhOJiMVTOhehXOXVyar8MuaJ7omDVJhFJcwsVct0dJMkbO2VfqwOPP2fkiavBUGWFloh7hLBOoxFWnjiSnpCPuqSiPn0JDWO6tIDjaiAvTw%3D%3D%20root%40rick-pve%0Assh-rsa%20AAAAB3NzaC1yc2EAAAADAQABAAACAQCS0eqSAZpjvkZhg8Xrg1wrBxXYHdatd4jumX%2Fg4LCwIfoNtiiVteW8lyGSZElUJEuZTdf4yFcKEgLKdrPnXiwCmYo0AxxAeqdrsrJlj%2BP9h5nWu0kXYSTGq7uRQAJrVAfJkbE%2B6nJF2mz5ijTA8ruRTAej9%2BOGvgnnyfvJKw2Skbu%2FHce9cxQ2wxKk0TTLbDCZjZD%2FuHONbbipL8oSzAQxdNcON%2Fc9%2B9%2FdFawp8n%2FVMx5y0Y6Fk09BSt6QFIDW85%2Fs%2BcSj%2FLaZrDO%2BkwhpuUvSFFS0G8EkeyT4dReAL3B3SKFXcPFJANw5dFaLKTutVG3rpCO0Qh3E%2FWU2tRLGrFzKZASaMhObMj1lsdax1Em5JnSHHVZxUN7PT%2F0zF%2Fllc5PGdPWbnNAg9aOpwREGljcN%2B5BJL7DSskoXXlWBwjMm4GhM7uayxtWSy0r0NfviwSskIXugakYPiGWkt0U0bGLdue6AK8mP3I86ALHQdgVIAc5tPfUQ4mf12GmlxqgHpWCxeYnUHddA2FKUPtthD75xtho3uimpWaT39ZuNfEaSgO5OzhP0hztuWokUi3%2F7esoJSu60tBN4nQLvuMmW58HpOj9TCvajCtHUwCp%2BhJbhFeLE1Dl7zArO%2FNIY3G4n%2Fr1sNAZElhSs9NdU0zUBvDLc9%2BkZ03OrT56ixlt4878LMw%3D%3D%20root%40rick-pve%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIHa49%2FSHoUBkkX%2BCEMASSy9teNr7mk7St1j0XIJpjnge%20l3e7-wsl-migration%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIIkTDSPRFHJVE0vtRNo0o7WU%2BTRjZhkvYO4eRsruu15M%20l3e7-pve-stage%0A
+vga: serial0
+vmgenid: 1a492708-ee4b-484b-abc9-c7be082b6510
+=== VM 200
+agent: 1
+boot: order=scsi0
+cipassword: **********
+ciuser: labadmin
+cores: 4
+cpu: host
+description: Golden desktop image (sandbox baseline).%0ASegment%3A vmbr30 / 10.20.30.0/24 - **NO INTERNET**.
+ide2: local:200/vm-200-cloudinit.qcow2,media=cdrom,size=4M
+ipconfig0: ip=10.20.30.200/24,gw=10.20.30.1
+machine: q35
+memory: 6144
+meta: creation-qemu=9.2.0,ctime=1785005613
+name: golden-desktop
+nameserver: 1.1.1.1
+net0: virtio=BC:24:11:F1:BF:2A,bridge=vmbr30
+ostype: l26
+parent: known-good-20260801
+scsi0: vmdata:vm-200-disk-0,size=24064M
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=8c9d5052-cc6e-4080-bb93-d5e10d4132d9
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIIE9mELMGv0EptHf1fYlSCxL9Y9Q6LmyTlHO9Q65fOvu%20m808b%40windows%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDGX4gCk3TdPwDlSe%2B8WjGd6T60I20SaSQ48EFdllLex%20laptop%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIOxJ%2FCbvvUT45WQc2LAjrH%2FugbS%2FEM08mKPP0R1XbrZZ%20redzeplin%40ricksanchez%0Assh-rsa%20AAAAB3NzaC1yc2EAAAADAQABAAACAQCg%2BxoG39jW4B4VGiG1jZ1vo35%2BtavSEbHa7iBuUMslNR4wJcxpWokmANiInXX2Y%2FDG81MLBUK1nFEB1uHxn8YuMqV5KSUKN%2FuRqcoFiCqydJoCfssOxSRVrvOnsKmCH1ZpfRppb4mg66RTyj6U1nMH3BIYygVKIhHmd9BiXY5MYMnUQauQWugDa2dpYcAuBMtIqVTK%2Bg2F6c7khz6TrQB8pt7VFztl%2B4RFydCdxOvxnCsT3QjeYDzmXhB9bVm9EV0APxszBEk9HENK8Jn2knHBlDTccCREt9eMYf6JpPFGLXyG%2FsKsh9tPIQrvXZpjbnPgf7PHw3rPQS%2FQxqzsSKswNdBBryGlD%2Fd42O%2By1Vwr16EupA6n9n514KAt6r0N84P49aqEu7EWLa2E9qRxuXtNCwTUMaW%2FROwsb5xtzru9whS7Cg7zi6ApzAD%2B6BWERS%2BfmKQSMAOKQuRd4CDAJTE%2F1AJlKK5Ldl7qYelcr2Z3DrwRpLwD33c2Wpb8bdVk9kwYnL4cJC0jI5fUM83s9L2OtRifzFFC0c2dMAoCbdx%2BmlIk8D9vSyjkRQNy2i1c1ZqnhOJiMVTOhehXOXVyar8MuaJ7omDVJhFJcwsVct0dJMkbO2VfqwOPP2fkiavBUGWFloh7hLBOoxFWnjiSnpCPuqSiPn0JDWO6tIDjaiAvTw%3D%3D%20root%40rick-pve%0A
+vga: serial0
+vmgenid: eeb75743-f950-4b4d-83e7-51894d44b4a8
+=== VM 210
+agent: 1
+balloon: 3072
+boot: order=scsi0
+cipassword: **********
+ciuser: labadmin
+cores: 4
+cpu: host
+description: Red team infrastructure.%0ASegment%3A vmbr40 - NO INTERNET.
+ide2: local:210/vm-210-cloudinit.qcow2,media=cdrom,size=4M
+ipconfig0: ip=10.20.40.12/24,gw=10.20.40.1
+machine: q35
+memory: 6144
+meta: creation-qemu=9.2.0,ctime=1785005613
+name: redinfra01
+nameserver: 1.1.1.1
+net0: virtio=BC:24:11:3D:FE:32,bridge=vmbr61,firewall=0,tag=99
+onboot: 1
+ostype: l26
+parent: known-good-20260801
+scsi0: vmdata:vm-210-disk-0,size=34304M
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=7fe92b89-ca6b-4ac8-a416-f36c89c1462c
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIIE9mELMGv0EptHf1fYlSCxL9Y9Q6LmyTlHO9Q65fOvu%20m808b%40windows%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDGX4gCk3TdPwDlSe%2B8WjGd6T60I20SaSQ48EFdllLex%20laptop%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIOxJ%2FCbvvUT45WQc2LAjrH%2FugbS%2FEM08mKPP0R1XbrZZ%20redzeplin%40ricksanchez%0Assh-rsa%20AAAAB3NzaC1yc2EAAAADAQABAAACAQCg%2BxoG39jW4B4VGiG1jZ1vo35%2BtavSEbHa7iBuUMslNR4wJcxpWokmANiInXX2Y%2FDG81MLBUK1nFEB1uHxn8YuMqV5KSUKN%2FuRqcoFiCqydJoCfssOxSRVrvOnsKmCH1ZpfRppb4mg66RTyj6U1nMH3BIYygVKIhHmd9BiXY5MYMnUQauQWugDa2dpYcAuBMtIqVTK%2Bg2F6c7khz6TrQB8pt7VFztl%2B4RFydCdxOvxnCsT3QjeYDzmXhB9bVm9EV0APxszBEk9HENK8Jn2knHBlDTccCREt9eMYf6JpPFGLXyG%2FsKsh9tPIQrvXZpjbnPgf7PHw3rPQS%2FQxqzsSKswNdBBryGlD%2Fd42O%2By1Vwr16EupA6n9n514KAt6r0N84P49aqEu7EWLa2E9qRxuXtNCwTUMaW%2FROwsb5xtzru9whS7Cg7zi6ApzAD%2B6BWERS%2BfmKQSMAOKQuRd4CDAJTE%2F1AJlKK5Ldl7qYelcr2Z3DrwRpLwD33c2Wpb8bdVk9kwYnL4cJC0jI5fUM83s9L2OtRifzFFC0c2dMAoCbdx%2BmlIk8D9vSyjkRQNy2i1c1ZqnhOJiMVTOhehXOXVyar8MuaJ7omDVJhFJcwsVct0dJMkbO2VfqwOPP2fkiavBUGWFloh7hLBOoxFWnjiSnpCPuqSiPn0JDWO6tIDjaiAvTw%3D%3D%20root%40rick-pve%0A
+vga: serial0
+vmgenid: aedb287e-7c3e-47aa-b36d-5f0941ee426a
+=== VM 300
+balloon: 0
+boot: order=scsi0
+cores: 4
+cpu: host
+machine: q35
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1786757094
+name: fw01
+net0: virtio=BC:24:11:FA:0D:86,bridge=vmbr0,firewall=0
+net1: virtio=BC:24:11:CE:4D:EE,bridge=vmbr61,firewall=0
+net2: virtio=BC:24:11:B9:AF:89,bridge=vmbr60,firewall=0
+onboot: 1
+ostype: other
+scsi0: vmdata:vm-300-disk-0,discard=on,iothread=1,size=32G,ssd=1
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=707e93b2-56bd-4e11-809a-3d647a633f89
+tags: range,firewall,gateway
+vga: serial0
+vmgenid: 384b338d-ca57-4425-94ff-a9173b728d8f
+=== VM 310
+agent: enabled=1
+balloon: 12288
+boot: order=scsi0
+cicustom: user=local:snippets/cthost01-user.yaml
+cores: 12
+cpu: host
+ide2: vmdata:vm-310-cloudinit,media=cdrom
+ipconfig0: ip=10.20.0.60/24,gw=10.20.0.1
+machine: q35
+memory: 24576
+meta: creation-qemu=9.2.0,ctime=1786757154
+name: cthost01
+net0: virtio=BC:24:11:C9:47:9A,bridge=vmbr0,firewall=0
+net1: virtio=BC:24:11:09:3D:17,bridge=vmbr60,firewall=0
+net2: virtio=BC:24:11:7F:75:E4,bridge=vmbr91,firewall=0
+onboot: 1
+ostype: l26
+scsi0: vmdata:vm-310-disk-0,discard=on,iothread=1,size=200G,ssd=1
+scsihw: virtio-scsi-single
+smbios1: uuid=d5ebf7e0-b6d1-40c7-844b-48a5a6e95e19
+tags: range,containers,incus
+vmgenid: 2662a217-d4ff-4314-b2c3-1b4851cc7795
+=== VM 3010
+agent: 1
+bios: ovmf
+boot: order=sata0;ide0
+cores: 4
+efidisk0: vmstore:vm-3010-disk-0,efitype=4m,pre-enrolled-keys=0,size=1M
+ide0: local:iso/win10.iso,media=cdrom,size=5420408K
+ide2: vzhot:iso/ir-autounattend.iso,media=cdrom,size=372K
+machine: pc-q35-9.2+pve1
+memory: 8192
+meta: creation-qemu=9.2.0,ctime=1785888668
+name: irtest-win10ent
+net0: virtio=BC:24:11:68:26:C1,bridge=vmbr30,link_down=1
+ostype: win11
+sata0: vmstore:vm-3010-disk-3,size=64G
+sata1: local:iso/virtio-win.iso,media=cdrom,size=771138K
+sata2: vzhot:iso/ir-installers.iso,media=cdrom,size=8583778K
+scsihw: virtio-scsi-single
+smbios1: uuid=8576a81b-483a-4009-a523-52739c36f097
+tpmstate0: vmstore:vm-3010-disk-1,size=4M,version=v2.0
+unused0: vmstore:vm-3010-disk-2
+vmgenid: 0a8b4c18-f4cd-4afd-a9ae-7057c2cb8484
+=== VM 3011
+agent: 1
+args: -device usb-kbd,bus=ehci.0,port=2
+bios: ovmf
+boot: order=sata0;ide0;sata1
+cores: 4
+efidisk0: vmstore:vm-3011-disk-0,efitype=4m,pre-enrolled-keys=0,size=1M
+ide0: local:iso/win11-ent-eval-25h2.iso,media=cdrom,size=6926570K
+ide2: vzhot:iso/ir-autounattend.iso,media=cdrom,size=374K
+machine: pc-q35-9.2+pve1
+memory: 8192
+meta: creation-qemu=9.2.0,ctime=1785888679
+name: irtest-win11ent
+net0: virtio=BC:24:11:BD:E9:DE,bridge=vmbr30,link_down=1
+ostype: win11
+sata0: vmstore:vm-3011-disk-3,size=64G
+sata1: local:iso/virtio-win.iso,media=cdrom,size=771138K
+scsihw: virtio-scsi-single
+smbios1: uuid=8cb2f45c-ddc4-409c-a400-a0cb5b53a589
+tpmstate0: vmstore:vm-3011-disk-1,size=4M,version=v2.0
+unused0: vmstore:vm-3011-disk-2
+vmgenid: 69919f94-3104-4e3f-8311-59c9f75b0922
+=== VM 3012
+agent: 1
+boot: order=scsi0;ide0;sata2
+cipassword: **********
+ciupgrade: 0
+ciuser: irtest
+cores: 2
+ide0: vzhot:iso/ir-installers.iso,media=cdrom,size=8197706K
+ide2: vmstore:vm-3012-cloudinit,media=cdrom
+ipconfig0: ip=10.20.30.52/24
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1785885506
+name: irtest-ubuntu
+net0: virtio=BC:24:11:7A:3C:C1,bridge=vmbr30
+ostype: l26
+sata2: vzhot:iso/ir-installers.iso,media=cdrom,size=8583746K
+scsi0: vmstore:vm-3012-disk-0,size=28160M
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=9f5c14c8-734d-4e50-b550-288011c1b6ac
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDn%2BQkSUhfb1xuny2HXl22Nx9sr74T8x09CPl5zM646V%20irtest-harness%0A
+vga: serial0
+vmgenid: 34179d78-165c-43c8-94de-94806093b51e
+=== VM 3013
+agent: 1
+boot: order=scsi0;ide0;sata2
+cipassword: **********
+ciuser: irtest
+cores: 2
+cpu: x86-64-v2-AES
+ide0: vzhot:iso/ir-installers.iso,media=cdrom,size=8197706K
+ide2: vmstore:vm-3013-cloudinit,media=cdrom
+ipconfig0: ip=10.20.30.53/24
+memory: 4096
+meta: creation-qemu=9.2.0,ctime=1785887429
+name: irtest-rocky9
+net0: virtio=BC:24:11:96:78:D2,bridge=vmbr30
+ostype: l26
+sata2: vzhot:iso/ir-installers.iso,media=cdrom,size=8583746K
+scsi0: vmstore:vm-3013-disk-0,size=34G
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=94821594-4510-490c-a31e-ba922bc0f293
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDn%2BQkSUhfb1xuny2HXl22Nx9sr74T8x09CPl5zM646V%20irtest-harness%0A
+vga: serial0
+vmgenid: e1fe36ec-d5a9-4be3-b849-01a47d99330e
+=== VM 3020
+agent: 1
+boot: order=scsi0
+cipassword: **********
+ciuser: relics
+cores: 6
+cpu: x86-64-v2-AES
+ide2: vmstore:vm-3020-cloudinit,media=cdrom
+ipconfig0: ip=dhcp
+memory: 12288
+meta: creation-qemu=9.2.0,ctime=1785916820
+name: relics-vm
+net0: virtio=BC:24:11:85:0B:B4,bridge=vmbr0
+ostype: l26
+scsi0: vmstore:vm-3020-disk-0,size=122368M
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=94de588c-2b78-4e1a-8125-072189082793
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDn%2BQkSUhfb1xuny2HXl22Nx9sr74T8x09CPl5zM646V%20irtest-harness%0A
+vga: serial0
+vmgenid: 1c2e2361-73a6-470c-8da5-bbad60e6eea6
+=== VM 9000
+agent: 1
+boot: order=scsi0
+ciuser: labadmin
+cores: 2
+cpu: host
+description: TEMPLATE - Ubuntu Noble cloud image.%0ASegment%3A vmbr30 - NO INTERNET.
+ide2: local:9000/vm-9000-cloudinit.qcow2,media=cdrom
+machine: q35
+memory: 2048
+meta: creation-qemu=9.2.0,ctime=1785005613
+name: ubuntu-noble-tmpl
+net0: virtio=BC:24:11:15:29:D2,bridge=vmbr30
+ostype: l26
+scsi0: vmdata:base-9000-disk-0,size=3584M
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=488907a7-23a9-4244-b282-9e4b48618cfc
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIIE9mELMGv0EptHf1fYlSCxL9Y9Q6LmyTlHO9Q65fOvu%20m808b%40windows%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDGX4gCk3TdPwDlSe%2B8WjGd6T60I20SaSQ48EFdllLex%20laptop%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIOxJ%2FCbvvUT45WQc2LAjrH%2FugbS%2FEM08mKPP0R1XbrZZ%20redzeplin%40ricksanchez%0Assh-rsa%20AAAAB3NzaC1yc2EAAAADAQABAAACAQCg%2BxoG39jW4B4VGiG1jZ1vo35%2BtavSEbHa7iBuUMslNR4wJcxpWokmANiInXX2Y%2FDG81MLBUK1nFEB1uHxn8YuMqV5KSUKN%2FuRqcoFiCqydJoCfssOxSRVrvOnsKmCH1ZpfRppb4mg66RTyj6U1nMH3BIYygVKIhHmd9BiXY5MYMnUQauQWugDa2dpYcAuBMtIqVTK%2Bg2F6c7khz6TrQB8pt7VFztl%2B4RFydCdxOvxnCsT3QjeYDzmXhB9bVm9EV0APxszBEk9HENK8Jn2knHBlDTccCREt9eMYf6JpPFGLXyG%2FsKsh9tPIQrvXZpjbnPgf7PHw3rPQS%2FQxqzsSKswNdBBryGlD%2Fd42O%2By1Vwr16EupA6n9n514KAt6r0N84P49aqEu7EWLa2E9qRxuXtNCwTUMaW%2FROwsb5xtzru9whS7Cg7zi6ApzAD%2B6BWERS%2BfmKQSMAOKQuRd4CDAJTE%2F1AJlKK5Ldl7qYelcr2Z3DrwRpLwD33c2Wpb8bdVk9kwYnL4cJC0jI5fUM83s9L2OtRifzFFC0c2dMAoCbdx%2BmlIk8D9vSyjkRQNy2i1c1ZqnhOJiMVTOhehXOXVyar8MuaJ7omDVJhFJcwsVct0dJMkbO2VfqwOPP2fkiavBUGWFloh7hLBOoxFWnjiSnpCPuqSiPn0JDWO6tIDjaiAvTw%3D%3D%20root%40rick-pve%0A
+template: 1
+vga: serial0
+vmgenid: 1f4f8c07-660b-47ce-94a3-81704ea78b2d
+=== VM 9001
+agent: 1
+boot: order=scsi0
+ciuser: labadmin
+cores: 2
+cpu: host
+description: TEMPLATE - Ubuntu Jammy cloud image.%0ASegment%3A vmbr40 - NO INTERNET.
+ide2: local:9001/vm-9001-cloudinit.qcow2,media=cdrom
+machine: q35
+memory: 2048
+meta: creation-qemu=9.2.0,ctime=1785017832
+name: ubuntu-jammy-tmpl
+net0: virtio=BC:24:11:8E:D8:84,bridge=vmbr40
+ostype: l26
+scsi0: vmdata:base-9001-disk-0,size=2252M
+scsihw: virtio-scsi-single
+serial0: socket
+smbios1: uuid=115ef67e-aaa0-4a44-8293-f10d3bdfc1a4
+sshkeys: ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIIE9mELMGv0EptHf1fYlSCxL9Y9Q6LmyTlHO9Q65fOvu%20m808b%40windows%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIDGX4gCk3TdPwDlSe%2B8WjGd6T60I20SaSQ48EFdllLex%20laptop%0Assh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIOxJ%2FCbvvUT45WQc2LAjrH%2FugbS%2FEM08mKPP0R1XbrZZ%20redzeplin%40ricksanchez%0Assh-rsa%20AAAAB3NzaC1yc2EAAAADAQABAAACAQCg%2BxoG39jW4B4VGiG1jZ1vo35%2BtavSEbHa7iBuUMslNR4wJcxpWokmANiInXX2Y%2FDG81MLBUK1nFEB1uHxn8YuMqV5KSUKN%2FuRqcoFiCqydJoCfssOxSRVrvOnsKmCH1ZpfRppb4mg66RTyj6U1nMH3BIYygVKIhHmd9BiXY5MYMnUQauQWugDa2dpYcAuBMtIqVTK%2Bg2F6c7khz6TrQB8pt7VFztl%2B4RFydCdxOvxnCsT3QjeYDzmXhB9bVm9EV0APxszBEk9HENK8Jn2knHBlDTccCREt9eMYf6JpPFGLXyG%2FsKsh9tPIQrvXZpjbnPgf7PHw3rPQS%2FQxqzsSKswNdBBryGlD%2Fd42O%2By1Vwr16EupA6n9n514KAt6r0N84P49aqEu7EWLa2E9qRxuXtNCwTUMaW%2FROwsb5xtzru9whS7Cg7zi6ApzAD%2B6BWERS%2BfmKQSMAOKQuRd4CDAJTE%2F1AJlKK5Ldl7qYelcr2Z3DrwRpLwD33c2Wpb8bdVk9kwYnL4cJC0jI5fUM83s9L2OtRifzFFC0c2dMAoCbdx%2BmlIk8D9vSyjkRQNy2i1c1ZqnhOJiMVTOhehXOXVyar8MuaJ7omDVJhFJcwsVct0dJMkbO2VfqwOPP2fkiavBUGWFloh7hLBOoxFWnjiSnpCPuqSiPn0JDWO6tIDjaiAvTw%3D%3D%20root%40rick-pve%0A
+template: 1
+vga: serial0
+vmgenid: 15c8a46d-e121-4ed2-93ae-b3d00778d295
+=== CT 400
+arch: amd64
+cores: 4
+features: nesting=1
+hostname: ghosts-api
+memory: 4096
+nameserver: 10.31.10.10
+net0: name=eth0,bridge=vmbr61,gw=10.31.10.1,hwaddr=BC:24:11:B4:A2:12,ip=10.31.10.50/24,tag=10,type=veth
+onboot: 0
+ostype: debian
+rootfs: vmdata:subvol-400-disk-0,size=16G
+searchdomain: lab.local
+swap: 512
+unprivileged: 1
+--- storage
+Name           Type     Status           Total            Used       Available        %
+hot             dir     active      3844550452      2744304264      1061159632   71.38%
+local           dir     active       164029204        96021704        59602508   58.54%
+vmdata      zfspool     active       902299648       243984380       658315268   27.04%
+vmstore     zfspool     active      1723334656       925964976       797369680   53.73%
+vzhot           dir     active      3844550452      2744304264      1061159632   71.38%
+NAME      SIZE  ALLOC   FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT
+vmdata    888G   233G   655G        -         -    25%    26%  1.00x    ONLINE  -
+vmstore  1.66T   883G   813G        -         -     9%    52%  1.00x    ONLINE  -
+NAME                        USED  AVAIL  REFER  MOUNTPOINT
+vmdata                      233G   628G    96K  /vmdata
+vmdata/base-9000-disk-0    1.00G   628G  1.00G  -
+vmdata/base-9001-disk-0    1.04G   628G  1.04G  -
+vmdata/subvol-400-disk-0   3.05G  13.0G  2.95G  /vmdata/subvol-400-disk-0
+vmdata/vm-130-disk-0       5.15G   628G  5.15G  -
+vmdata/vm-140-disk-0       15.2G   628G  15.2G  -
+vmdata/vm-141-disk-0       5.26G   628G  4.88G  -
+vmdata/vm-142-disk-0       12.2G   628G  12.2G  -
+vmdata/vm-143-cloudinit     144K   628G    72K  -
+vmdata/vm-143-disk-0       2.61G   628G  1.85G  -
+vmdata/vm-146-disk-0       13.0G   628G  10.7G  -
+vmdata/vm-150-disk-0       15.6G   628G  11.6G  -
+vmdata/vm-151-disk-0       14.6G   628G  11.3G  -
+vmdata/vm-152-disk-0       16.5G   628G  13.1G  -
+vmdata/vm-153-disk-0       14.4G   628G  11.2G  -
+vmdata/vm-154-disk-0       18.6G   628G  12.3G  -
+vmdata/vm-155-disk-0       37.0G   628G  20.5G  -
+vmdata/vm-160-disk-0       5.79G   628G  5.79G  -
+vmdata/vm-161-disk-0       10.4G   628G  9.66G  -
+vmdata/vm-200-disk-0       2.97G   628G  2.97G  -
+vmdata/vm-210-disk-0       12.1G   628G  11.7G  -
+vmdata/vm-300-disk-0       5.15G   628G  4.66G  -
+vmdata/vm-310-cloudinit     144K   628G    72K  -
+vmdata/vm-310-disk-0       20.7G   628G  18.4G  -
+vmstore                     883G   760G    96K  /vmstore
+vmstore/vm-100-disk-0       764G   760G   683G  -
+vmstore/vm-101-disk-0       140K   760G    72K  -
+vmstore/vm-101-disk-1      49.8G   760G  32.4G  -
+vmstore/vm-102-cloudinit     72K   760G    72K  -
+--- disks
+loop0     5.2G 
+loop1   753.1M 
+sda     931.5G Samsung SSD 840 EVO 1TB
+sdb     894.3G SAMSUNG MZ7LH960HAJR-00003
+zd0      62.2G 
+zd16     21.5G 
+zd32       80G 
+zd48     23.5G 
+zd64       60G 
+zd80      3.5G 
+zd96       60G 
+zd112    33.5G 
+zd128      60G 
+zd144    33.5G 
+zd160    21.5G 
+zd176      60G 
+zd192      45G 
+zd208      60G 
+zd224       4M 
+zd240    43.5G 
+nvme1n1   1.8T Samsung SSD 980 PRO 2TB
+nvme0n1   3.6T WD_BLACK SN850X 4000GB
+zd256     2.2G 
+zd272      60G 
+zd288     100G 
+zd304     1.8T 
+zd320       1M 
+zd336     120G 
+zd352      60G 
+zd368       4M 
+zd384    27.5G 
+zd400       4M 
+zd416      34G 
+zd432       4M 
+zd448       1M 
+zd464       4M 
+zd480      64G 
+zd496       1M 
+zd512       4M 
+zd528      64G 
+zd544      64G 
+zd560      64G 
+zd576   119.5G 
+zd592       4M 
+zd608      32G 
+zd624     200G 
+zd640       4M 
+--- network
+auto lo
+iface lo inet loopback
+
+# 10G DIRECT crosslink to l3e7 (enp4s0). Cabled 2026-08-16.
+# Point-to-point, NO switch in the path - which is why jumbo is safe here. The 2026-07-31
+# outage was jumbo renegotiating through the MokerLink while on DHCP; neither applies to a
+# direct cable with a static address.
+auto enp70s0
+iface enp70s0 inet static
+    address 10.10.10.1/30
+    mtu 9000
+    post-up ethtool -K enp70s0 rx-udp-gro-forwarding on rx-gro-list off || true
+
+# LAN uplink - moved here 2026-08-16 when the 10G became the l3e7 crosslink.
+# Intel I211: 1000baseT max by hardware, so this link can never exceed 1G.
+# The old "held with NO IP on purpose" note no longer applies: it shared the
+# 192.168.1.0/24 L2 domain with enp70s0, and enp70s0 is now a separate point-to-point link.
+auto enp73s0
+iface enp73s0 inet static
+    address 192.168.1.144/24
+    gateway 192.168.1.1
+    mtu 1500
+    # MokerLink 2G04210GSMX web UI is on 192.168.2.1; keep a management address on
+    # whichever NIC actually faces the switch - that is this one now.
+    post-up ip addr add 192.168.2.145/24 dev enp73s0 || true
+    post-up ethtool -K enp73s0 rx-udp-gro-forwarding on rx-gro-list off || true
+
+auto vmbr0
+iface vmbr0 inet static
+    address 10.20.0.1/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+    post-up   iptables -t nat -A POSTROUTING -s 10.20.0.0/24 ! -d 10.20.0.0/16 -o enp73s0 -j MASQUERADE
+    post-down iptables -t nat -D POSTROUTING -s 10.20.0.0/24 ! -d 10.20.0.0/16 -o enp73s0 -j MASQUERADE
+
+auto vmbr20
+iface vmbr20 inet static
+    address 10.20.20.1/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+
+auto vmbr30
+iface vmbr30 inet static
+    address 10.20.30.1/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+
+auto vmbr40
+iface vmbr40 inet static
+    address 10.20.40.1/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+
+auto vmbr50
+iface vmbr50 inet static
+    address 10.20.50.1/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+
+auto vmbr59
+iface vmbr59 inet static
+    address 10.20.59.1/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+
+auto vmbr90
+iface vmbr90 inet manual
+	bridge-ports none
+	bridge-stp off
+	bridge-fd 0
+	# SO NSM monitor bridge. LIVE 2026-08-02: fed by enp73s0 from MokerLink Port 2,
+	# which is the mirror DESTINATION for Port 6 (the 10G uplink), direction BOTH.
+	# learning MUST be off: a bridge never forwards a frame back out the port it
+	# arrived on, so any MAC learned on enp73s0 makes that unicast vanish instead of
+	# reaching Security Onion. This exact bug cost a debug cycle - do not remove.
+	post-up bridge link set dev enp73s0 learning off flood on || true
+	post-up bridge fdb show br vmbr90 | grep enp73s0 | awk '{print $1}' | xargs -r -I{} bridge fdb del {} dev enp73s0 master || true
+	post-up ip link set enp73s0 promisc on || true
+	# one-way tap: the SOC must never transmit onto the production LAN
+	post-up ebtables -A FORWARD -o enp73s0 -j DROP || true
+	post-down ebtables -D FORWARD -o enp73s0 -j DROP || true
+
+# Second uplink, cabled 2026-08-02. Intel I211 -> GT-BE98_PRO port eth3 (confirmed by LLDP).
+# HARDWARE LIMIT: I211 is 1000baseT max - this link can NEVER be 2.5G. Only the AQC107
+# (enp70s0) does 2.5G, and it is already the primary uplink.
+# Verified reachable: arping to 192.168.1.1 and .253 both 100 pct via this port.
+# Held with NO IP on purpose: it shares the 192.168.1.0/24 L2 domain with enp70s0, so an
+# address here would cause ARP flux and the asymmetric-routing confusion seen on 2026-07-29.
+# arp_ignore=1 stops this port answering ARP for 192.168.1.144.
+# NOT bonded yet - converting enp70s0 into a bond touches the live management path and the
+# MASQUERADE rules for all lab segments; awaiting explicit go-ahead.
+auto enp73s0
+iface enp73s0 inet manual
+    post-up sysctl -w net.ipv4.conf.enp73s0.arp_ignore=1 >/dev/null || true
+    post-up sysctl -w net.ipv4.conf.enp73s0.arp_announce=2 >/dev/null || true
+
+# RANGE containers - VLAN trunk (5,10,20,30,40,45,60,70,99)
+auto vmbr60
+iface vmbr60 inet manual
+	bridge-ports none
+	bridge-stp off
+	bridge-fd 0
+	bridge-vlan-aware yes
+	bridge-vids 2-4094
+
+# RANGE VMs - VLAN trunk (5,10,20,30,40,45,60,70,99)
+auto vmbr61
+iface vmbr61 inet manual
+	bridge-ports none
+	bridge-stp off
+	bridge-fd 0
+	bridge-vlan-aware yes
+	bridge-vids 2-4094
+
+# RANGE SPAN dest - separate from house SPAN vmbr90
+auto vmbr91
+iface vmbr91 inet manual
+	bridge-ports none
+	bridge-stp off
+	bridge-fd 0
+
+lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP> 
+enp73s0          UP             3c:7c:3f:1c:8f:70 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+enp70s0          UP             3c:7c:3f:1c:8f:71 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+wlp74s0          DOWN           a4:b1:c1:91:96:91 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+vmbr0            UP             9e:5d:a0:9f:41:ea <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr20           UNKNOWN        4e:1d:13:d6:13:1c <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr60           UP             aa:c8:b8:78:53:17 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr30           DOWN           00:00:00:00:00:00 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+vmbr61           UP             d6:ec:c3:2d:9b:ff <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr40           UP             62:6f:cc:e4:70:46 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr91           UP             02:d2:2a:89:4c:7e <BROADCAST,MULTICAST,UP,LOWER_UP> 
+vmbr50           UNKNOWN        62:12:14:81:10:90 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+tap310i0         UNKNOWN        9e:5d:a0:9f:41:ea <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+vmbr59           UNKNOWN        86:a2:e4:2f:5b:f9 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+tap310i1         UNKNOWN        aa:c8:b8:78:53:17 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+vmbr90           DOWN           00:00:00:00:00:00 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+tap300i0         UNKNOWN        ae:1c:b7:23:09:8e <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap300i1         UNKNOWN        d6:ec:c3:2d:9b:ff <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap300i2         UNKNOWN        62:3d:6c:86:58:07 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+spanmir-br@spanmir UP             02:d2:2a:89:4c:7e <BROADCAST,MULTICAST,UP,LOWER_UP> 
+spanmir@spanmir-br UP             da:c8:68:ee:f5:a9 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+tap146i0         UNKNOWN        62:6f:cc:e4:70:46 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap150i0         UNKNOWN        ea:0d:ba:8a:4b:0b <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap151i0         UNKNOWN        12:d3:7d:98:7f:35 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap152i0         UNKNOWN        ca:4d:91:f5:28:4a <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap153i0         UNKNOWN        5a:1b:8b:b1:00:b9 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap154i0         UNKNOWN        ea:1e:a0:93:20:27 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap155i0         UNKNOWN        ca:92:0e:f2:53:8a <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tailscale0       UNKNOWN        <POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP> 
+vxlan91          UNKNOWN        86:bf:71:76:14:7d <BROADCAST,MULTICAST,UP,LOWER_UP> 
+tap161i0         UNKNOWN        d2:33:7a:cc:02:ad <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap161i1         UNKNOWN        c6:78:b9:30:79:67 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap100i0         UNKNOWN        de:26:ce:fe:32:72 <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+tap310i2         UNKNOWN        8a:23:aa:6c:79:8a <BROADCAST,MULTICAST,PROMISC,UP,LOWER_UP> 
+veth400i0@if2    UP             fe:e5:3a:cc:17:f9 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+--- MACs (must be preserved)
+VM100 net0: virtio=BC:24:11:86:A8:43,bridge=vmbr0
+VM101 net0: virtio=BC:24:11:9F:35:F2,bridge=vmbr0
+VM102 net0: virtio=BC:24:11:61:30:A6,bridge=vmbr40
+VM130 net0: virtio=BC:24:11:8A:70:99,bridge=vmbr30
+VM140 net0: virtio=BC:24:11:BB:D1:77,bridge=vmbr40
+VM141 net0: virtio=BC:24:11:71:6E:D1,bridge=vmbr40
+VM142 net0: virtio=BC:24:11:2B:20:0B,bridge=vmbr40
+VM143 net0: virtio=BC:24:11:E6:62:32,bridge=vmbr40
+VM146 net0: virtio=BC:24:11:AD:1B:39,bridge=vmbr40
+VM150 net0: virtio=BC:24:11:5C:F3:FD,bridge=vmbr61,firewall=0,tag=10
+VM151 net0: virtio=BC:24:11:1A:9A:2F,bridge=vmbr61,firewall=0,tag=10
+VM152 net0: virtio=BC:24:11:52:46:3E,bridge=vmbr61,firewall=0,tag=10
+VM153 net0: virtio=BC:24:11:46:6B:41,bridge=vmbr61,firewall=0,tag=30
+VM154 net0: virtio=BC:24:11:9B:C7:66,bridge=vmbr61,firewall=0,tag=20
+VM155 net0: virtio=BC:24:11:E3:BD:25,bridge=vmbr61,firewall=0,tag=20
+VM160 net0: virtio=BC:24:11:01:EE:89,bridge=vmbr61,firewall=0,tag=30
+VM161 net0: virtio=BC:24:11:80:CA:B9,bridge=vmbr61,tag=10
+VM161 net1: virtio=BC:24:11:EC:12:77,bridge=vmbr0
+VM200 net0: virtio=BC:24:11:F1:BF:2A,bridge=vmbr30
+VM210 net0: virtio=BC:24:11:3D:FE:32,bridge=vmbr61,firewall=0,tag=99
+VM300 net0: virtio=BC:24:11:FA:0D:86,bridge=vmbr0,firewall=0
+VM300 net1: virtio=BC:24:11:CE:4D:EE,bridge=vmbr61,firewall=0
+VM300 net2: virtio=BC:24:11:B9:AF:89,bridge=vmbr60,firewall=0
+VM310 net0: virtio=BC:24:11:C9:47:9A,bridge=vmbr0,firewall=0
+VM310 net1: virtio=BC:24:11:09:3D:17,bridge=vmbr60,firewall=0
+VM310 net2: virtio=BC:24:11:7F:75:E4,bridge=vmbr91,firewall=0
+VM3010 net0: virtio=BC:24:11:68:26:C1,bridge=vmbr30,link_down=1
+VM3011 net0: virtio=BC:24:11:BD:E9:DE,bridge=vmbr30,link_down=1
+VM3012 net0: virtio=BC:24:11:7A:3C:C1,bridge=vmbr30
+VM3013 net0: virtio=BC:24:11:96:78:D2,bridge=vmbr30
+VM3020 net0: virtio=BC:24:11:85:0B:B4,bridge=vmbr0
+VM9000 net0: virtio=BC:24:11:15:29:D2,bridge=vmbr30
+VM9001 net0: virtio=BC:24:11:8E:D8:84,bridge=vmbr40
+--- host firewall
+--- startup order
+/etc/pve/qemu-server/100.conf:onboot: 1
+/etc/pve/qemu-server/101.conf:onboot: 0
+/etc/pve/qemu-server/102.conf:onboot: 0
+/etc/pve/qemu-server/130.conf:onboot: 0
+/etc/pve/qemu-server/130.conf:onboot: 0
+/etc/pve/qemu-server/140.conf:onboot: 0
+/etc/pve/qemu-server/140.conf:onboot: 0
+/etc/pve/qemu-server/141.conf:onboot: 0
+/etc/pve/qemu-server/141.conf:onboot: 0
+/etc/pve/qemu-server/142.conf:onboot: 0
+/etc/pve/qemu-server/142.conf:onboot: 0
+/etc/pve/qemu-server/143.conf:onboot: 0
+/etc/pve/qemu-server/143.conf:onboot: 0
+/etc/pve/qemu-server/146.conf:onboot: 1
+/etc/pve/qemu-server/146.conf:onboot: 1
+/etc/pve/qemu-server/146.conf:onboot: 1
+/etc/pve/qemu-server/146.conf:onboot: 1
+/etc/pve/qemu-server/150.conf:onboot: 1
+/etc/pve/qemu-server/150.conf:onboot: 1
+/etc/pve/qemu-server/150.conf:onboot: 1
+/etc/pve/qemu-server/151.conf:onboot: 1
+/etc/pve/qemu-server/151.conf:onboot: 1
+/etc/pve/qemu-server/151.conf:onboot: 1
+/etc/pve/qemu-server/152.conf:onboot: 1
+/etc/pve/qemu-server/152.conf:onboot: 1
+/etc/pve/qemu-server/152.conf:onboot: 1
+/etc/pve/qemu-server/152.conf:onboot: 1
+/etc/pve/qemu-server/153.conf:onboot: 1
+/etc/pve/qemu-server/153.conf:onboot: 1
+/etc/pve/qemu-server/153.conf:onboot: 1
+/etc/pve/qemu-server/154.conf:onboot: 1
+/etc/pve/qemu-server/154.conf:onboot: 1
+/etc/pve/qemu-server/154.conf:onboot: 1
+/etc/pve/qemu-server/154.conf:onboot: 1
+/etc/pve/qemu-server/155.conf:onboot: 1
+/etc/pve/qemu-server/155.conf:onboot: 1
+/etc/pve/qemu-server/155.conf:onboot: 1
+/etc/pve/qemu-server/155.conf:onboot: 1
+/etc/pve/qemu-server/160.conf:onboot: 0
+/etc/pve/qemu-server/160.conf:onboot: 0
+/etc/pve/qemu-server/161.conf:onboot: 1
+/etc/pve/qemu-server/210.conf:onboot: 1
+/etc/pve/qemu-server/210.conf:onboot: 1
+/etc/pve/qemu-server/210.conf:onboot: 1
+/etc/pve/qemu-server/210.conf:onboot: 1
+/etc/pve/qemu-server/300.conf:onboot: 1
+/etc/pve/qemu-server/310.conf:onboot: 1
