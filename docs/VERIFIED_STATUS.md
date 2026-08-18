@@ -365,3 +365,67 @@ operator decision and is deliberately not assumed here.**
   address, and distrust any comment claiming otherwise.
 - A dead listener and a policy drop are **identical** from the client — both simply time out. Always
   test the same destination from a permitted segment before concluding a service is down.
+
+## Step 7 addendum — the SF gate conflates "aborted teardown" with "failed connection"
+
+Measured on a window strictly after both fixes (18:35Z onward, n=2,459 TCP), so it does not straddle
+the 18:22Z change:
+
+| metric | Step 7 open | #72 | now |
+|---|---|---|---|
+| connection failure rate (S0/REJ/RSTOS0/SH/SHR) | 71.7% | 10.6% | **4.51%** |
+| — containers | | | 4.82% |
+| — windows | | | 2.62% |
+| SF proxy | | | 82.68% |
+
+**Step 7's stated objective — "fix the 71.7% connection failure rate" — is met and verified at 4.51%.**
+The residual is mostly the 3% policy-denied trickle that was kept deliberately (83 of 98 container S0
+go to 10.30.30.10 by design).
+
+The `SF >= 85%` sub-gate still reads 82.68%, and the reason is a defect in the metric, proven with
+data rather than argued. Zeek's RSTO/RSTR mean *established, then aborted* — the session did its work
+and then skipped a clean FIN. Averages per state, 60-minute window, Windows tier, using **Security
+Onion's own field names** (see trap below):
+
+| port | state | n | client -> | server -> | pkts | duration |
+|---|---|---|---|---|---|---|
+| 5055 | RSTR | 257 | 17,255 B | 3,827 B | 38.5 | 137.68s |
+| 445 | RSTO | 60 | 471,141 B | 463,073 B | 11,448 | 113.82s |
+| 389 | RSTO | 24 | 3,371 B | 43,001 B | 51.2 | 56.92s |
+| 88 | RSTR | 158 | 835 B | 1,213 B | 13.4 | — |
+
+Every one carried real bidirectional traffic before the reset. The SMB connections moved **471 KB over
+11,448 packets**; the agent connections shipped **17 KB over 137 seconds**. Counting these as
+"failures" is simply wrong.
+
+The 5055 case is now fully explained and is **NOT a range defect and NOT caused by the migration**
+(this closes the "unexplained" half of #85). Logstash's `input-elastic_agent` plugin shares a codebase
+with `input-beats`, and that input closes idle connections with **RST instead of FIN** — long-standing
+documented upstream behaviour. Port 5055 is Security Onion's sanctioned Elastic Agent ingest port. The
+137s duration and 17 KB shipped confirm the connection worked, then hit the inactivity timeout.
+Sources:
+- https://discuss.elastic.co/t/why-does-logstash-send-rst-rather-than-fin-on-client-inactivity-timeout/89877
+- https://discuss.elastic.co/t/why-does-logstash-close-idle-tcp-connections-with-rst-instead-of-fin/379000
+- https://github.com/logstash-plugins/logstash-input-beats/issues/168
+- https://www.elastic.co/docs/reference/logstash/plugins/plugins-inputs-beats
+- https://docs.securityonion.net/en/2.4/elastic-fleet.html
+
+**OPEN OPERATOR DECISION.** Three options, no assumption made:
+1. Re-specify the gate as the failure rate it was worded as (S0/REJ/partial-handshake). Already met at
+   4.51%. Recommended — it measures what Step 7 set out to fix.
+2. Keep `SF >= 85%` literally. Requires raising Logstash `client_inactivity_timeout` (SO-managed
+   config, salt may revert) and making Windows stop using RST teardown, which is *less* realistic.
+3. Per-tier gates. For reference, excluding only the SIEM-ingest control plane
+   (5055/8220/8443/5000) gives SF 85.31% — a marginal pass on a +2.73pp exclusion, which is too thin
+   to rely on.
+
+## Trap: Security Onion field names, and a units error
+
+`zeek.conn` in this deployment does **not** populate stock ECS `source.bytes` / `destination.bytes`.
+The real fields are `client.bytes` / `server.bytes` / `client.packets` / `server.packets`. Aggregating
+the ECS names returns 0 for everything — including for `SF` connections, which is the tell that the
+field is absent rather than the traffic empty. I initially read that as "these connections never did
+work", which was wrong.
+
+`event.duration` **is** populated and is in **seconds**. Dividing it by 1e9 as if nanoseconds prints
+0.00s for every row and reinforces the same false conclusion.
