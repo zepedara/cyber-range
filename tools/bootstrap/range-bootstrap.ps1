@@ -35,6 +35,9 @@ param(
   [string]$NtfyUrl    = "https://ntfy.sh",
   [string]$WgConf     = "",
   [string]$SshPubKey  = "",
+  [string]$HomeTsIp   = "",   # tailnet IP of the home proxy host - the egress pivot
+  [string]$HomePublic = "",   # public name of home, for ssh443 / wstunnel rungs
+  [string]$CustomDerp = "",   # your own DERP host, if *.tailscale.com is blocked
   [string]$TsHostname = $env:COMPUTERNAME
 )
 
@@ -231,6 +234,36 @@ curl.exe -s -H "Title: [BEACON] $env:COMPUTERNAME" -d $body "https://ntfy.sh/$to
     Register-ScheduledTask -TaskName "RangePhoneHome" -Action $a -Trigger $t -Principal $p -Force | Out-Null
   }
   if(-not $Check){ & powershell -NoProfile -File $ph; Say "test beacon sent" }
+}
+
+# --- 8. netladder - install, configure, RUN ----------------------------------
+Say "--- netladder (multi-path egress)"
+$ladderSrc = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "netladder.ps1"
+$ladderDst = "C:\ProgramData\range\netladder.ps1"
+Act "install netladder" {
+  New-Item -ItemType Directory -Path "C:\ProgramData\range" -Force | Out-Null
+  if(Test-Path $ladderSrc){ Copy-Item $ladderSrc $ladderDst -Force }
+  else { Say "WARN: netladder.ps1 not found beside this script" }
+}
+Act "write netladder config" {
+  if(-not (Test-Path "C:\ProgramData\range\netladder.json")){
+    @{ HomeTsIp=$HomeTsIp; HomeProxyPort=3128; HomePublic=$HomePublic;
+       Ssh443Port=443; CustomDerp=$CustomDerp;
+       NtfyUrl=$NtfyUrl; NtfyTopic=$NtfyTopic } |
+      ConvertTo-Json | Set-Content "C:\ProgramData\range\netladder.json" -Encoding UTF8
+  }
+}
+# Re-probe on a timer: a path blocked at 09:00 may be open at 21:00, and vice
+# versa. Static assumptions about a hostile network go stale.
+Act "register NetLadder task (every 30 min)" {
+  $a = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ladderDst`""
+  $t = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 30)
+  $p = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+  Register-ScheduledTask -TaskName "RangeNetLadder" -Action $a -Trigger $t -Principal $p -Force | Out-Null
+}
+if(-not $Check -and (Test-Path $ladderDst)){
+  Say "--- running the ladder now"
+  & powershell -NoProfile -ExecutionPolicy Bypass -File $ladderDst
 }
 
 # --- summary ------------------------------------------------------------------

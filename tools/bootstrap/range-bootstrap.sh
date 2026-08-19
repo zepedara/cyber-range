@@ -206,6 +206,76 @@ else
   [ -z "$NTFY_TOPIC" ] && say "no NTFY_TOPIC set - beacon SKIPPED"
 fi
 
+# --- 7. netladder - install deps, install ladder, RUN it ---------------------
+say "--- netladder (multi-path egress)"
+# Probe dependencies. Installed even if unused, so the ladder can TEST every rung
+# and tell you which would work - a rung you cannot test is a rung you cannot plan.
+LADDER_DEPS=""
+for p in dnsutils openssh-client netcat-openbsd; do
+  dpkg -s "$p" >/dev/null 2>&1 || LADDER_DEPS="$LADDER_DEPS $p"
+done
+if [ -n "$LADDER_DEPS" ]; then
+  say "installing probe deps:$LADDER_DEPS"
+  run env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $LADDER_DEPS
+fi
+# wstunnel enables rung 6 (WireGuard wrapped in TLS). Optional, best-effort.
+if ! have wstunnel && [ "$CHECK_ONLY" = 0 ]; then
+  WSV="10.1.9"
+  if curl -fsSL -o /tmp/wstunnel.tar.gz \
+      "https://github.com/erebe/wstunnel/releases/download/v${WSV}/wstunnel_${WSV}_linux_amd64.tar.gz" 2>/dev/null; then
+    tar -xzf /tmp/wstunnel.tar.gz -C /tmp wstunnel 2>/dev/null && \
+      install -m 755 /tmp/wstunnel /usr/local/bin/wstunnel 2>/dev/null && \
+      say "wstunnel installed (rung 6 available)"
+  else
+    say "wstunnel download failed - rung 6 will report 'skip'. Not fatal."
+  fi
+fi
+
+if [ "$CHECK_ONLY" = 0 ]; then
+  install -m 755 "$(dirname "$0")/netladder.sh" /usr/local/bin/netladder 2>/dev/null && \
+    say "netladder installed" || say "WARN: netladder.sh not found beside this script"
+
+  if [ ! -f /etc/default/netladder ]; then
+    cat > /etc/default/netladder <<EOF
+# Written by range-bootstrap. Fill in what applies to your site.
+HOME_TS_IP=${HOME_TS_IP:-}
+HOME_PROXY_PORT=${HOME_PROXY_PORT:-3128}
+HOME_PUBLIC=${HOME_PUBLIC:-}
+SSH443_PORT=${SSH443_PORT:-443}
+CUSTOM_DERP=${CUSTOM_DERP:-}
+NTFY_URL=$NTFY_URL
+NTFY_TOPIC=$NTFY_TOPIC
+TIMEOUT=8
+EOF
+    say "wrote /etc/default/netladder"
+  fi
+
+  # Re-probe periodically: a path that was blocked at 09:00 may be open at 21:00,
+  # and the reverse. Static assumptions about a hostile network go stale.
+  cat > /etc/systemd/system/netladder.service <<'EOF'
+[Unit]
+Description=Probe every egress path and pivot to the best one
+After=network-online.target tailscaled.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/netladder
+EOF
+  cat > /etc/systemd/system/netladder.timer <<'EOF'
+[Unit]
+Description=Re-probe egress paths every 30 minutes
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=30min
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now netladder.timer >/dev/null 2>&1 && say "netladder.timer enabled (30m)"
+
+  say "--- running the ladder now"
+  /usr/local/bin/netladder || true
+fi
+
 # --- summary -----------------------------------------------------------------
 say "=== summary ==="
 printf '   %-14s %s\n' "tailscale" "$(have tailscale && (tailscale status >/dev/null 2>&1 && echo "UP $(tailscale ip -4 2>/dev/null|head -1)" || echo "installed, not up") || echo MISSING)"
