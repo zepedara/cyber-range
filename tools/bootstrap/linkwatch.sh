@@ -41,12 +41,24 @@ probe(){
 probe_tailscale(){ tailscale status >/dev/null 2>&1; }
 
 reset_nics(){
-  # Bounce carrier on every physical interface that is not UP. Skips virtual
-  # bridges and tailscale's own tun - resetting those is never the fix.
-  local i
+  # Bounce carrier on physical interfaces that are not UP.
+  #
+  # *** HYPERVISOR SAFETY - do not remove this guard ***
+  # On a Proxmox/KVM host the physical NIC is usually ENSLAVED TO A BRIDGE. On
+  # the reference host, enp73s0 is a member of vmbr1. Bouncing an enslaved NIC
+  # drops the link for EVERY guest on that bridge - the SIEM, the firewall, the
+  # whole range - to "fix" connectivity for the host. That cure is far worse than
+  # the disease, and on a remote box it is unrecoverable without a hands-on visit.
+  # So: never touch an interface that has a master.
+  local i m
   for i in $(ls /sys/class/net); do
-    case "$i" in lo|tailscale*|wg*|vmbr*|veth*|docker*|br-*) continue ;; esac
+    case "$i" in lo|tailscale*|wg*|vmbr*|veth*|docker*|br-*|tap*|fw*|bond*) continue ;; esac
     [ -e "/sys/class/net/$i/device" ] || continue      # physical only
+    m=$(basename "$(readlink "/sys/class/net/$i/master" 2>/dev/null)" 2>/dev/null)
+    if [ -n "$m" ]; then
+      log "stage1: SKIPPING $i - enslaved to $m (bouncing it would drop every guest on that bridge)"
+      continue
+    fi
     if [ "$(cat /sys/class/net/$i/operstate 2>/dev/null)" != "up" ]; then
       log "stage1: bouncing $i"
       ip link set "$i" down 2>/dev/null; sleep 2; ip link set "$i" up 2>/dev/null

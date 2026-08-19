@@ -56,6 +56,41 @@ say "=== range-bootstrap starting (check_only=$CHECK_ONLY) ==="
 . /etc/os-release 2>/dev/null || true
 say "host=$(hostname) os=${PRETTY_NAME:-unknown} kernel=$(uname -r)"
 
+# --- 0. Proxmox VE detection and guards --------------------------------------
+# Installing onto a HYPERVISOR is different from installing onto a build box:
+# mistakes here take down every guest, not just this host.
+IS_PVE=0
+if have pveversion; then
+  IS_PVE=1
+  say "PROXMOX VE DETECTED: $(pveversion 2>/dev/null | head -1)"
+  say "  base: ${PRETTY_NAME:-unknown} (${VERSION_CODENAME:-unknown})"
+  # PVE 8.x = Debian 12 bookworm; PVE 9.x = Debian 13 trixie. NodeSource and
+  # Tailscale both publish for each, so either works - but the codename must be
+  # right or apt silently installs nothing.
+
+  # TRAP 1: the enterprise repo is enabled by default and 401s without a
+  # subscription, so `apt-get update` returns non-zero on a perfectly healthy
+  # host. Left unhandled this looks like a broken network.
+  if grep -rqs '^deb.*enterprise\.proxmox\.com' /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+    if ! grep -rqs '^deb.*download\.proxmox\.com.*pve-no-subscription' /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+      say "  WARN: enterprise repo enabled with NO no-subscription repo - apt will 401 and installs will fail."
+      say "        Fix: add 'deb http://download.proxmox.com/debian/pve ${VERSION_CODENAME} pve-no-subscription'"
+    else
+      say "  note: enterprise repo will 401 (expected, no subscription); no-subscription repo IS present, so installs work."
+      say "        apt-get update returns non-zero here - that is NOT a network fault."
+    fi
+  fi
+
+  # TRAP 2: PVE's spiceproxy already listens on *:3128. If you intend to run a
+  # local proxy on this host, pick another port.
+  if ss -ltn 2>/dev/null | grep -q ':3128'; then
+    say "  note: port 3128 is already in use on this host (PVE spiceproxy). Do not bind a local proxy there."
+  fi
+
+  # TRAP 3: never let the watchdog reboot a hypervisor unattended.
+  say "  guard: auto-reboot will be left DISABLED on a hypervisor."
+fi
+
 # --- 1. base tooling ---------------------------------------------------------
 say "--- base packages"
 NEED=""
@@ -153,6 +188,8 @@ PROBE_TARGETS="1.1.1.1 8.8.8.8 9.9.9.9"
 FAIL_BEFORE_NIC_RESET=3
 FAIL_BEFORE_TS_RESTART=5
 FAIL_BEFORE_REBOOT=0        # 0 = never auto-reboot. Set e.g. 30 to enable.
+# On a HYPERVISOR leave this at 0 permanently: rebooting to fix the host's own
+# connectivity takes every guest down with it.
 EOF
 
   cat > /etc/systemd/system/linkwatch.service <<'EOF'
