@@ -1,0 +1,94 @@
+#!/bin/bash
+# ============================================================================
+# range-enum-refresh - runs as ROOT on a timer. Collects read-only enumeration
+# into a cache directory that the unprivileged rangeread account can read.
+#
+# WHY A CACHE INSTEAD OF PRIVILEGE:
+#   The SSH forced command runs as 'rangeread', an unprivileged account. qm,
+#   pvesm and the nested ssh hops all need root. Granting that would mean sudo
+#   rules (sudo is not even installed on Proxmox) or a setuid binary - both of
+#   which create an escalation path from an account reachable by a remote AI
+#   agent. Inverting it removes the problem: root writes, the account reads.
+#   The remote peer therefore has NO privileged code path at all.
+#
+# Every file carries a generation timestamp so consumers can see data AGE and
+# never mistake a stale cache for live truth.
+# ============================================================================
+set -uo pipefail
+
+# Single-instance lock. The systemd timer's run and a manual run raced on the
+# same .tmp paths and clobbered each other ("mv: cannot stat ..."). No data was
+# lost, but concurrent refreshes must not overlap.
+exec 9>/var/lock/range-enum-refresh.lock
+flock -n 9 || { logger -t range-enum-refresh "refresh already running, skipping"; exit 0; }
+
+CACHE="/var/lib/range-enum"
+install -d -m 0755 "$CACHE"
+
+w(){ # w <name> <command...>
+  local name="$1"; shift
+  local tmp="${CACHE}/.${name}.tmp"
+  {
+    echo "# generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    "$@" 2>&1
+  } > "$tmp" 2>/dev/null
+  mv -f "$tmp" "${CACHE}/${name}.txt"
+  chmod 0644 "${CACHE}/${name}.txt"
+}
+
+host_summary(){
+  pveversion 2>/dev/null | head -1
+  uname -r
+  lscpu 2>/dev/null | grep -E '^Model name|^CPU\(s\)|^Thread\(s\)|^Core\(s\)|^Socket'
+  free -g 2>/dev/null | awk '/^Mem/{print "RAM total="$2"G used="$3"G avail="$7"G"}'
+}
+
+span_check(){
+  echo "vmbr91 ageing_time=$(cat /sys/class/net/vmbr91/bridge/ageing_time 2>/dev/null)"
+  for p in /sys/class/net/vmbr91/brif/*; do
+    [ -e "$p" ] || continue
+    echo "port $(basename "$p") learning=$(cat "$p/learning" 2>/dev/null)"
+  done
+}
+
+zfs_status(){
+  zpool list 2>/dev/null
+  awk '/^size/ {printf "ARC size=%.1f GiB\n", $3/1073741824}' /proc/spl/kstat/zfs/arcstats 2>/dev/null
+}
+
+guest_configs(){
+  # all guest configs in one file, delimited - avoids one file per guest
+  for id in $(qm list 2>/dev/null | awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}'); do
+    echo "=== GUEST $id ==="
+    qm config "$id" 2>/dev/null
+    echo
+  done
+}
+
+remote(){ # remote <host> <command...>
+  ssh -o BatchMode=yes -o ConnectTimeout=20 "$@" 2>/dev/null || cat <<'MSG'
+(not available on this channel)
+This verb needs an SSH hop from the hypervisor to another range host. That
+credential is deliberately NOT granted - it would widen the surface reachable
+from this account for little gain. Container inventory and telemetry
+composition are published instead in the repository:
+  docs/ENVIRONMENT_SNAPSHOT.md   - estate, containers, VLANs, storage
+  docs/AUDIT_AND_LESSONS.md      - telemetry composition, gate results
+Ask the operator if you need a fresher figure.
+MSG
+}
+
+w host-summary   host_summary
+w guest-list     qm list
+w guest-config   guest_configs
+w bridge-list    ip -br link show type bridge
+w span-check     span_check
+w storage-list   pvesm status
+w zfs-status     zfs_status
+w container-list remote cthost01 'incus list -c ns4 --format csv'
+w vlan-coverage  remote so01 '/usr/local/bin/range-enum-siem vlan-coverage'
+w siem-health    remote so01 '/usr/local/bin/range-enum-siem siem-health'
+w siem-datasets  remote so01 '/usr/local/bin/range-enum-siem siem-datasets'
+w gates-latest   remote so01 '/usr/local/bin/range-enum-siem gates-latest'
+
+logger -t range-enum-refresh "cache refreshed ($(ls -1 "$CACHE"/*.txt 2>/dev/null | wc -l) files)"
