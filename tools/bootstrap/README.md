@@ -393,3 +393,68 @@ out-of-band management:
 
 Without one of these, recovery from a hard hang requires someone physically present — which is what
 this whole package exists to avoid.
+
+---
+
+## Multi-WAN: using an independent carrier as your way out
+
+The cleanest path off a restrictive line is a **different line you already own** — a
+cellular puck, a second carrier, a hotspot. That is not a workaround; it is a
+separate network with its own policy.
+
+### The trap that makes this fail silently
+
+**Windows selects routes by `interface metric + route metric`, lowest wins — and
+"Automatic Metric" is ON by default, assigning metrics by LINK SPEED.**
+([Microsoft](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/automatic-metric-for-ipv4-routes))
+
+So a 1 Gb lab NIC automatically beats a slower cellular puck, and Windows sends
+internet traffic out the lab line whether you want it or not. The same mechanism
+lets an unattached-but-linked USB adapter win the default route — which is exactly
+how lab traffic left the wrong NIC in the 2026-08-19 outage.
+
+### Windows
+
+```powershell
+.\wan-policy.ps1 -Show          # see metrics and which adapter owns 0.0.0.0/0
+.\wan-policy.ps1 -InternetVia "Puck" -LabVia "Ethernet" `
+                 -LabSubnets 10.10.0.0/16 -LabGateway 10.10.100.1
+.\wan-policy.ps1 -Verify -LabSubnets 10.10.0.0/16
+```
+
+It disables Automatic Metric (or link speed silently overrides you), pins the
+internet WAN as preferred, and pins lab subnets to the lab NIC with **specific
+persistent routes** — a specific route beats a default route regardless of metric,
+which is what keeps lab traffic on the lab line even though its metric is worse.
+
+`-PolicyStore PersistentStore` matters: routes added without it vanish on reboot,
+and a working split quietly reverts overnight.
+
+### Linux / Proxmox — policy routing
+
+`ip rule` decides *which* packets get special treatment; `ip route` populates the
+table they point at. Rules are evaluated by priority, lowest first, first match wins.
+
+```bash
+# a named table
+echo "100 wanpuck" >> /etc/iproute2/rt_tables
+
+# default route for that table, out the cellular interface
+ip route add default via <PUCK_GW> dev <PUCK_IF> table wanpuck
+
+# send everything from this host out the puck...
+ip rule add from <PUCK_IP> table wanpuck priority 100
+# ...except lab subnets, which stay on the main table
+ip rule add to 10.10.0.0/16 table main priority 50
+```
+
+**`ip rule` and `ip route` are NOT persistent.** Put them in a netplan `routing-policy`
+stanza or a startup unit, or they are gone at the next reboot.
+
+Verify the split actually holds — a route table that looks right and behaves wrong
+is the failure mode that costs hours:
+
+```bash
+ip route get 1.1.1.1        # should leave via the puck
+ip route get 10.10.1.1      # should leave via the lab NIC
+```
