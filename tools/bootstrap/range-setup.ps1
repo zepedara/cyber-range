@@ -126,6 +126,38 @@ if(Have claude){
   } else { Warn "would install $(Split-Path $i -Leaf)" }
 }
 
+# --- inbound SSH: the RETURN PATH --------------------------------------------
+# Without this, setup completes and home still cannot reach in - which defeats the
+# point, since the goal is bidirectional control: drive this host from home, and
+# reach home machines from here.
+# TRAP: admin keys on Windows live in the MACHINE-WIDE file. sshd IGNORES
+# ~\.ssh\authorized_keys for any account in the Administrators group.
+$ak = Staged "authorized_keys"
+if($ak -and -not $Check){
+  $cap = Get-WindowsCapability -Online -Name OpenSSH.Server* -ErrorAction SilentlyContinue
+  if($cap -and $cap.State -ne "Installed"){
+    Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null
+  }
+  Set-Service sshd -StartupType Automatic -ErrorAction SilentlyContinue
+  Start-Service sshd -ErrorAction SilentlyContinue
+  $dst = "C:\ProgramData\ssh\administrators_authorized_keys"
+  New-Item -ItemType Directory -Path (Split-Path $dst) -Force | Out-Null
+  if(-not (Test-Path $dst)){ New-Item -ItemType File -Path $dst -Force | Out-Null }
+  Get-Content $ak | Where-Object { $_ -like "ssh-*" } | ForEach-Object {
+    if(-not (Select-String -Path $dst -SimpleMatch $_ -Quiet -ErrorAction SilentlyContinue)){
+      Add-Content -Path $dst -Value $_
+    }
+  }
+  icacls $dst /inheritance:r /grant "SYSTEM:F" /grant "BUILTIN\Administrators:F" | Out-Null
+  OK "authorised inbound SSH keys (machine-wide admin file)"
+  if((Get-Service sshd -ErrorAction SilentlyContinue).Status -eq "Running"){
+    OK "sshd running - home can reach in over the tunnel"
+  } else { Warn "sshd not running - inbound control will not work" }
+} elseif($Check) {
+  if($ak){ OK "authorized_keys staged (return path will work)" }
+  else { Bad "NO authorized_keys in bundle - home could not reach in" }
+}
+
 if($Check){ Write-Host "`n-Check complete: review any FAIL above."; exit 0 }
 
 # power: an unattended remote box must not sleep

@@ -187,6 +187,32 @@ for s in netladder.sh linkwatch.sh claude-connect; do
   fi
 done
 
+# --- inbound SSH: the RETURN PATH ---------------------------------------------
+# Without this the setup finishes and home still cannot reach in. The whole point
+# of the tunnel is bidirectional control: drive this host from home, and reach
+# home machines from here. So authorise the staged keys and make sure sshd runs.
+AK=$(staged 'authorized_keys')
+if [ -n "$AK" ] && [ "$CHECK" = 0 ]; then
+  install -d -m 700 /root/.ssh
+  touch /root/.ssh/authorized_keys
+  while read -r line; do
+    case "$line" in ssh-*)
+      grep -qF "$line" /root/.ssh/authorized_keys 2>/dev/null || echo "$line" >> /root/.ssh/authorized_keys ;;
+    esac
+  done < "$AK"
+  chmod 600 /root/.ssh/authorized_keys
+  ok "authorised $(grep -c '^ssh-' /root/.ssh/authorized_keys) key(s) for inbound SSH"
+  systemctl enable --now ssh sshd >/dev/null 2>&1
+  if ss -ltn 2>/dev/null | grep -q ':22 '; then
+    ok "sshd listening on 22 - home can reach in over the tunnel"
+  else
+    warn "sshd not listening - inbound control will not work"
+  fi
+elif [ "$CHECK" = 1 ]; then
+  [ -n "$AK" ] && ok "authorized_keys staged (return path will work)" \
+               || bad "NO authorized_keys in the bundle - home could not reach in"
+fi
+
 [ "$CHECK" = 1 ] && { printf '\n--check complete: review any FAIL above.\n'; exit 0; }
 
 # =============================================================================
