@@ -130,6 +130,18 @@ fi
 echo "claude-connect: route=$ROUTE ($DETAIL)" >&2
 [ "$ROUTE_ONLY" = 1 ] && exit 0
 
+# --- SCOPE: only Claude uses this route, not the whole host --------------------
+# Two mechanisms, because "the option that works" can be either a proxy or a
+# different physical WAN, and they need different handling.
+#
+#  A) PROXY  - naturally per-process. Exporting into THIS shell and then exec'ing
+#     claude means only claude's process tree inherits it. Nothing else on the
+#     host is redirected, and nothing persists after exit.
+#
+#  B) INTERFACE - Linux has no per-process routing, but it does have per-UID
+#     routing: `ip rule add uidrange`. Run claude as a dedicated uid and only that
+#     uid's traffic uses the chosen WAN. Set CLAUDE_WAN_IF/CLAUDE_WAN_GW to enable.
+#     man ip-rule(8); uidrange requires Linux 4.10+.
 if [ -n "$PROXY" ]; then
   export HTTPS_PROXY="$PROXY" HTTP_PROXY="$PROXY"
   export NO_PROXY="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10"
@@ -137,6 +149,35 @@ else
   # Explicitly CLEAR any stale proxy: an inherited setting pointing at a dead
   # tunnel is exactly how "Claude stopped working" happens after a link flaps.
   unset HTTPS_PROXY HTTP_PROXY https_proxy http_proxy
+fi
+
+# Optional per-UID WAN binding. Only engages when explicitly configured, because
+# it needs root to install the rule and a dedicated account to run under.
+if [ -n "${CLAUDE_WAN_IF:-}" ] && [ -n "${CLAUDE_WAN_GW:-}" ]; then
+  CU="${CLAUDE_WAN_USER:-claudewan}"
+  if [ "$(id -u)" -eq 0 ]; then
+    id "$CU" >/dev/null 2>&1 || useradd -m -s /bin/bash "$CU" 2>/dev/null
+    UID_N=$(id -u "$CU" 2>/dev/null)
+    TBL="${CLAUDE_WAN_TABLE:-140}"
+    if [ -n "$UID_N" ]; then
+      # Idempotent: replace rather than stack duplicate rules on every launch.
+      ip rule del uidrange "$UID_N-$UID_N" 2>/dev/null
+      ip route replace default via "$CLAUDE_WAN_GW" dev "$CLAUDE_WAN_IF" table "$TBL" 2>/dev/null
+      ip rule add uidrange "$UID_N-$UID_N" table "$TBL" priority 140 2>/dev/null
+      echo "claude-connect: uid $CU($UID_N) bound to $CLAUDE_WAN_IF via $CLAUDE_WAN_GW (table $TBL)" >&2
+      echo "claude-connect: ONLY this uid uses that WAN - the rest of the host is untouched" >&2
+      # Hand the credentials and route to that user, then drop into it.
+      install -d -m 700 -o "$CU" -g "$CU" "/home/$CU/.claude" 2>/dev/null
+      [ -r "$CREDS" ] && install -m 600 -o "$CU" -g "$CU" "$CREDS" "/home/$CU/.claude/.credentials.json" 2>/dev/null
+      [ -f "$HOME/.claude/settings.json" ] && install -m 600 -o "$CU" -g "$CU" "$HOME/.claude/settings.json" "/home/$CU/.claude/settings.json" 2>/dev/null
+      exec setpriv --reuid="$UID_N" --regid="$UID_N" --init-groups \
+           env HTTPS_PROXY="${HTTPS_PROXY:-}" HTTP_PROXY="${HTTP_PROXY:-}" NO_PROXY="${NO_PROXY:-}" \
+           claude "$@"
+    fi
+  else
+    echo "claude-connect: CLAUDE_WAN_IF set but not running as root - cannot install the uid rule" >&2
+    echo "  run via sudo, or drop CLAUDE_WAN_IF and use the proxy path instead" >&2
+  fi
 fi
 
 exec claude "$@"

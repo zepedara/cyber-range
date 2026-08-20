@@ -250,19 +250,28 @@ ok "best path: $BEST (${BEST_SCORE}ms)"
 # =============================================================================
 phase "5 - PIN THE ROUTE"
 # =============================================================================
+# SCOPE THE ROUTE TO CLAUDE ONLY, not the whole host.
+# An earlier version wrote /etc/profile.d/claude-route.sh, which exports the proxy
+# into EVERY new login shell - so apt, git, curl and anything else would also be
+# redirected through home. That is far broader than intended and, if the tunnel
+# drops, it breaks unrelated tooling in ways that are hard to attribute.
+# Instead the decision is recorded in netladder's config and applied by
+# claude-connect at launch, in Claude's process environment only.
+rm -f /etc/profile.d/claude-route.sh 2>/dev/null
 if [ "$BEST" = "home-proxy" ]; then
   PROXY="http://${HOME_TS_IP}:${HOME_PROXY_PORT}"
-  cat > /etc/profile.d/claude-route.sh <<EOF
-export HTTPS_PROXY=$PROXY
-export HTTP_PROXY=$PROXY
-export NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10
-EOF
-  ok "route pinned: via home proxy $PROXY"
+  grep -q '^CLAUDE_ROUTE=' /etc/default/netladder 2>/dev/null \
+    && sed -i "s|^CLAUDE_ROUTE=.*|CLAUDE_ROUTE=$PROXY|" /etc/default/netladder \
+    || echo "CLAUDE_ROUTE=$PROXY" >> /etc/default/netladder
+  ok "route selected: home proxy $PROXY"
+  note "applied to Claude ONLY - system traffic is untouched"
 else
-  rm -f /etc/profile.d/claude-route.sh 2>/dev/null
-  ok "route pinned: direct (no proxy)"
+  sed -i '/^CLAUDE_ROUTE=/d' /etc/default/netladder 2>/dev/null
+  ok "route selected: direct (no proxy)"
 fi
-note "claude-connect re-verifies this at every launch, so a stale route cannot strand you"
+note "claude-connect re-verifies at every launch, so a stale route cannot strand you"
+note "to bind Claude to a specific WAN instead of a proxy, set CLAUDE_WAN_IF/CLAUDE_WAN_GW"
+note "  (per-UID routing via 'ip rule uidrange' - only Claude's uid uses that link)"
 
 # =============================================================================
 phase "6 - AUTH (subscription, gated)"
