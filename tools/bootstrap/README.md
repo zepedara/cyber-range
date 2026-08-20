@@ -191,6 +191,98 @@ Both are idempotent — safe to re-run.
   Test-NetConnection <lab-host> -TraceRoute    # confirm it leaves the intended adapter
   ```
 
+## PRE-AUTHORISATION CHECKLIST — do all of this BEFORE you go on site
+
+The assumption here is the hard one: **on site you will have no phone, no browser,
+and no way to complete an interactive login.** Anything that would prompt for auth
+must be provisioned in advance, or the host is dead on arrival.
+
+Four things can prompt. Three are solvable now; one only you can do.
+
+### 1. Claude Code auth — SOLVED, and verified
+
+Claude cannot complete an OAuth login on a headless host. An **API key** authenticates
+with no interaction at all.
+
+```bash
+# stage it, root-only, on the target
+install -m 600 -D /path/to/keyfile /etc/range/anthropic.key
+```
+
+`claude-connect` reads `/etc/range/anthropic.key`, then `~/.claude/.overflow_key`,
+exports `ANTHROPIC_API_KEY`, and never echoes the value. It refuses to proceed
+silently if neither a key nor cached credentials exist — better a clear warning
+than an interactive prompt nobody can answer.
+
+**Verified working:** a staged key returned `HTTP 200` from `api.anthropic.com`, so
+this path needs no login whatsoever.
+
+⚠️ **Cost:** an API key bills that key's account directly rather than a
+subscription. That is the price of working without a login — budget for it, and
+consider a cheaper default model for unattended work.
+
+### 2. Tailscale — ONLY YOU CAN DO THIS, and it is the most likely thing to strand you
+
+`tailscale up` **opens a browser for login** unless you supply a pre-authorised
+auth key. The CLI on a node **cannot mint one** — it requires the admin console.
+
+Create the key at `https://login.tailscale.com/admin/settings/keys` with:
+
+| Setting | Value | Why |
+|---|---|---|
+| **Reusable** | **Yes** | A single-use key is consumed by one failed attempt and then you are stuck |
+| **Expiry** | 90 days (max) | Note the date. An expired key fails exactly like a wrong one |
+| **Pre-approved** | **YES if device approval is enabled on your tailnet** | ← **the trap.** With device approval on, a new node stays blocked until someone approves it **in the console** — which needs the login you do not have |
+| **Ephemeral** | No | Ephemeral nodes vanish when they go offline; you want it to persist through outages |
+| **Tags** | e.g. `tag:build` | Tagged nodes do not expire with your user session |
+
+Then pass it in: `TS_AUTHKEY=tskey-auth-... ./range-bootstrap.sh`
+
+**Check whether device approval is on before you leave.** If it is and your key is
+not pre-approved, the host will connect to the control plane, be refused, and look
+exactly like a network fault.
+
+Also set **key expiry disabled** on the node afterwards, or it drops off the tailnet
+in 180 days regardless.
+
+### 3. SSH — already done, both directions
+
+- Their key is authorised on the range hosts (`revoke-c240` reverses it).
+- A dedicated keypair exists for reaching the build host; only the **public** half
+  was ever transmitted.
+
+Stage the private key on the target at `~/.ssh/id_ed25519` (mode 600) if the host
+needs to initiate SSH home.
+
+### 4. ntfy — no auth by design
+
+The beacon posts to a public topic and needs no credential. That is deliberate: it
+is the one channel that keeps working when every authenticated path has failed. It
+is **outbound-only** and must never be made a command channel.
+
+### Optional, if you want the extra rungs
+
+- **WireGuard:** export a peer profile from the router **now** and stage it as
+  `offline/wg0.conf`. Generating one on site needs router admin access.
+- **sshd on 443 at home:** rung 7, one of the most reliably-open paths — but it
+  needs an inbound port forward, so decide deliberately.
+- **Custom DERP:** only if `*.tailscale.com` is SNI-blocked. Needs a domain and a
+  cert, so build it before you need it.
+
+### Pre-flight verification — run this before you travel
+
+```bash
+sudo ./range-bootstrap.sh --check          # confirms every artifact is staged
+claude-connect --route                     # confirms a working route AND auth
+tailscale status                           # confirms the node is authorised, not just connected
+```
+
+If `--check` reports a missing artifact or `claude-connect` cannot pick a route,
+fix it **at home**. Every one of those failures is unrecoverable on site without
+the login you will not have.
+
+---
+
 ## When Anthropic itself is blocked
 
 This is the hard case, and it is common on government and enterprise perimeters. If

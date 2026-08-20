@@ -44,6 +44,66 @@ reachable(){ # reachable [proxy]
   case "$code" in 200|401|403) echo "$code"; return 0 ;; *) echo "${code:-000}"; return 1 ;; esac
 }
 
+# --- NON-INTERACTIVE AUTH: SUBSCRIPTION FIRST --------------------------------
+# On a headless host with no browser and no phone, Claude cannot complete an
+# OAuth login. Two ways to avoid one, in this order:
+#
+#   1. SUBSCRIPTION credentials (~/.claude/.credentials.json) - PREFERRED.
+#      Copying that file carries your subscription to the target. It holds an
+#      accessToken plus a refreshToken, so it renews itself - BUT ONLY while the
+#      REFRESH token is valid, and only if the host can reach Anthropic.
+#
+#   2. API key - fallback only. It bills the key's account (a card), not the
+#      subscription, so it is deliberately NOT used unless explicitly enabled
+#      with RANGE_ALLOW_API_KEY=1.
+#
+# THE REAL RISK IS THE REFRESH TOKEN EXPIRY. When it lapses there is no
+# non-interactive recovery: Claude will demand a login the host cannot perform.
+# So this checks the expiry and says plainly how long is left.
+CREDS="$HOME/.claude/.credentials.json"
+if [ -r "$CREDS" ]; then
+  # Read only the expiry fields - never the tokens.
+  RT_EXP=$(sed -n 's/.*"refreshTokenExpiresAt"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$CREDS" | head -1)
+  SUB=$(sed -n 's/.*"subscriptionType"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CREDS" | head -1)
+  NOW_MS=$(( $(date -u +%s) * 1000 ))
+  if [ -n "$RT_EXP" ]; then
+    LEFT_H=$(( (RT_EXP - NOW_MS) / 3600000 ))
+    if [ "$LEFT_H" -le 0 ]; then
+      echo "claude-connect: *** SUBSCRIPTION REFRESH TOKEN HAS EXPIRED ***" >&2
+      echo "  Claude cannot renew without an interactive login. Re-authenticate on a" >&2
+      echo "  machine with a browser and re-stage ~/.claude/.credentials.json." >&2
+    elif [ "$LEFT_H" -lt 24 ]; then
+      echo "claude-connect: WARNING - subscription refresh token expires in ${LEFT_H}h." >&2
+      echo "  Re-authenticate at home and re-stage the credentials BEFORE you lose access." >&2
+    else
+      echo "claude-connect: subscription auth (${SUB:-unknown}), refresh token valid ~197609(LEFT_H/24))d 197609(LEFT_H%24))h" >&2
+    fi
+  else
+    echo "claude-connect: subscription credentials present (expiry not parseable)" >&2
+  fi
+  # A subscription token renews only if Anthropic is reachable, which on a
+  # restricted network means the route below must come up FIRST. That ordering is
+  # why route selection happens after this block, not before.
+else
+  echo "claude-connect: no subscription credentials at $CREDS" >&2
+  if [ "${RANGE_ALLOW_API_KEY:-0}" = "1" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    for KF in /etc/range/anthropic.key "$HOME/.claude/.overflow_key"; do
+      [ -r "$KF" ] || continue
+      K=$(tr -d ' \t\r\n' < "$KF")
+      case "$K" in
+        sk-ant-*) export ANTHROPIC_API_KEY="$K"
+                  echo "claude-connect: FALLING BACK to API key from $KF - this bills a card, not the subscription" >&2
+                  break ;;
+      esac
+    done
+  fi
+  if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    echo "claude-connect: no usable auth. Claude will attempt an interactive login," >&2
+    echo "  which cannot succeed on a headless host. Stage ~/.claude/.credentials.json" >&2
+    echo "  from a machine where you are signed in (preserve mode 600)." >&2
+  fi
+fi
+
 ROUTE=""; PROXY=""; DETAIL=""
 
 C=$(reachable) && { ROUTE="direct"; DETAIL="HTTP $C"; }
