@@ -76,7 +76,8 @@ if [ -r "$CREDS" ]; then
       echo "claude-connect: WARNING - subscription refresh token expires in ${LEFT_H}h." >&2
       echo "  Re-authenticate at home and re-stage the credentials BEFORE you lose access." >&2
     else
-      echo "claude-connect: subscription auth (${SUB:-unknown}), refresh token valid ~197609(LEFT_H/24))d 197609(LEFT_H%24))h" >&2
+      LEFT_D=$(( LEFT_H / 24 )); LEFT_R=$(( LEFT_H % 24 ))
+      echo "claude-connect: subscription auth (${SUB:-unknown}), refresh token valid ~${LEFT_D}d ${LEFT_R}h" >&2
     fi
   else
     echo "claude-connect: subscription credentials present (expiry not parseable)" >&2
