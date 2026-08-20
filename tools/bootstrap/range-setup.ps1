@@ -85,11 +85,12 @@ $tsExe = "C:\Program Files\Tailscale\tailscale.exe"
 if(Test-Path $tsExe){
   OK "tailscale present: $(& $tsExe version 2>$null | Select-Object -First 1)"
 } else {
-  $i = Staged "tailscale-setup*.exe"
+  $i = Staged "tailscale-setup*.msi"; if(-not $i){ $i = Staged "tailscale-setup*.exe" }
   if(-not $i){ Die "tailscale not installed and no tailscale-setup*.exe in $OfflineDir" }
   if(-not $Check){
     Note "installing $(Split-Path $i -Leaf)"
-    Start-Process -FilePath $i -ArgumentList "/S" -Wait
+    if($i -like "*.msi"){ Start-Process msiexec.exe -ArgumentList "/i","`"$i`"","/qn","/norestart" -Wait }
+    else { Start-Process -FilePath $i -ArgumentList "/S" -Wait }
     if(-not (Test-Path $tsExe)){ Die "tailscale install FAILED from $(Split-Path $i -Leaf)" }
     OK "tailscale installed"
   } else { Warn "would install $(Split-Path $i -Leaf)" }
