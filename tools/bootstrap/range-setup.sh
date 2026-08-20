@@ -139,16 +139,40 @@ fi
 if have claude; then
   ok "claude present: $(claude --version 2>/dev/null | head -1)"
 else
-  CC=$(staged 'claude-code-*.tgz'); [ -n "$CC" ] || CC=$(staged 'anthropic-ai-claude-code-*.tgz')
+  # *** THE TRAP THAT NEARLY SHIPPED ***
+  # The published @anthropic-ai/claude-code package is a ~28KB WRAPPER. The real
+  # ~320MB binary arrives as an optionalDependency (claude-code-linux-x64), and
+  # postinstall merely copies it out. So `npm pack` alone stages a stub that fails
+  # on first launch with "claude native binary not installed".
+  # The correct offline method is a PRE-POPULATED NPM CACHE, which carries the
+  # platform package too. Verified: npm --offline against the cache produced the
+  # full 320MB binary.
+  NPMC="$OFFLINE_DIR/npm-cache"
   if [ "$CHECK" = 0 ]; then
-    [ -n "$CC" ] || die "claude not installed and no claude-code-*.tgz in $OFFLINE_DIR
-  Build it at home with: npm pack @anthropic-ai/claude-code"
-    note "installing $(basename "$CC")"
-    npm install -g "$CC" >/dev/null 2>&1
-    have claude || die "claude install FAILED from $(basename "$CC")"
-    ok "claude installed: $(claude --version 2>/dev/null | head -1)"
+    if [ -d "$NPMC" ]; then
+      note "installing claude from the offline npm cache"
+      npm install -g @anthropic-ai/claude-code --cache "$NPMC" --offline >/dev/null 2>&1
+    else
+      CC=$(staged 'claude-code-*.tgz')
+      [ -n "$CC" ] || die "claude not installed, and neither an npm-cache/ directory nor a
+  claude-code tarball is present in $OFFLINE_DIR.
+  Build the bundle at home with ./make-offline-bundle.sh - a bare 'npm pack'
+  is NOT sufficient, it omits the platform binary."
+      warn "no npm-cache/ - falling back to $(basename "$CC"), which may install only the wrapper"
+      npm install -g "$CC" >/dev/null 2>&1
+    fi
+    have claude || die "claude install FAILED"
+    # Prove the NATIVE binary landed, not just the stub - the stub passes a bare
+    # 'command -v claude' check and then fails at runtime.
+    NB=$(find /usr/lib/node_modules /usr/local/lib/node_modules -path '*claude-code-*' -name 'claude' -size +1M 2>/dev/null | head -1)
+    if [ -n "$NB" ]; then
+      ok "claude installed with native binary ($(du -h "$NB" | cut -f1))"
+    else
+      die "claude installed but the NATIVE BINARY IS MISSING - only the wrapper stub is present.
+  It will fail at first launch. Rebuild the bundle with an npm-cache/ directory."
+    fi
   else
-    [ -n "$CC" ] && warn "would install $(basename "$CC")" || bad "claude-code tarball MISSING"
+    [ -d "$NPMC" ] && warn "would install claude from npm-cache/" || bad "npm-cache/ MISSING - claude would install as a broken stub"
   fi
 fi
 

@@ -110,3 +110,27 @@ echo "  sudo TS_AUTHKEY=... HOME_TS_IP=... ./range-bootstrap.sh"
 echo
 echo "The target needs NO internet for the install. It needs connectivity only"
 echo "afterwards, for Tailscale to come up and for Claude to reach the API."
+
+# =============================================================================
+# CRITICAL ADDENDUM - the npm cache
+# =============================================================================
+# `npm pack @anthropic-ai/claude-code` stages only a ~28KB WRAPPER. The real
+# ~320MB binary is an optionalDependency (claude-code-<platform>), and postinstall
+# just copies it out of that package. Pack alone therefore produces an install
+# that fails at first launch with "claude native binary not installed".
+#
+# A pre-populated npm cache carries the platform package as well, and
+# `npm install --offline` against it produces a complete install. Verified.
+echo
+echo "--- npm cache (carries the platform binary that npm pack omits)"
+if command -v npm >/dev/null 2>&1; then
+  npm cache add @anthropic-ai/claude-code@latest --cache "$OUT/npm-cache" >/dev/null 2>&1 && ok "wrapper cached"
+  # Stage BOTH platforms so one bundle serves the Proxmox host and the Windows laptop.
+  for plat in linux-x64 win32-x64; do
+    npm cache add "@anthropic-ai/claude-code-$plat@latest" --cache "$OUT/npm-cache" >/dev/null 2>&1 \
+      && ok "$plat binary cached" || bad "$plat binary NOT cached - that platform will get a broken stub"
+  done
+  echo "   npm cache size: $(du -sh "$OUT/npm-cache" 2>/dev/null | cut -f1)"
+else
+  bad "npm unavailable - cannot build the cache, and WITHOUT IT claude installs as a stub"
+fi
