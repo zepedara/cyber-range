@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# =============================================================================
+# claude-connect - launch Claude Code on the route that ACTUALLY works right now.
+#
+# THE PROBLEM THIS SOLVES:
+#   Claude Code reads HTTPS_PROXY at PROCESS START. Setting it in a profile file
+#   only affects NEW shells, so `claude` launched in the current shell silently
+#   ignores it. Worse, a proxy that is set but no longer reachable makes Claude
+#   fail completely - a stale setting is worse than no setting.
+#
+#   So: decide the route at LAUNCH TIME, verify it, then exec claude with it.
+#
+# ORDER OF PREFERENCE:
+#   1. DIRECT      - if api.anthropic.com is reachable without help, use it.
+#                    Fastest, fewest moving parts, no dependency on home.
+#   2. HOME PROXY  - over the tunnel. Used when direct is blocked (the whole
+#                    point on a restricted network).
+#   3. FAIL LOUDLY - never launch Claude on a route known to be broken; say
+#                    exactly what was tried so the failure is diagnosable.
+#
+# Usage:  claude-connect [any claude args...]
+#         claude-connect --route          show the decision, launch nothing
+# =============================================================================
+set -uo pipefail
+
+. /etc/default/netladder 2>/dev/null
+HOME_TS_IP="${HOME_TS_IP:-}"
+HOME_PROXY_PORT="${HOME_PROXY_PORT:-3128}"
+PROBE_TIMEOUT="${PROBE_TIMEOUT:-10}"
+ROUTE_ONLY=0
+[ "${1:-}" = "--route" ] && { ROUTE_ONLY=1; shift; }
+
+# 401/403 means we reached Anthropic and only auth is missing - that IS success
+# for a reachability test. 000 means we never got there.
+reachable(){ # reachable [proxy]
+  local code
+  if [ -n "${1:-}" ]; then
+    code=$(curl -s -o /dev/null -w '%{http_code}' -x "$1" --max-time "$PROBE_TIMEOUT" \
+           https://api.anthropic.com/v1/models 2>/dev/null)
+  else
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time "$PROBE_TIMEOUT" \
+           https://api.anthropic.com/v1/models 2>/dev/null)
+  fi
+  case "$code" in 200|401|403) echo "$code"; return 0 ;; *) echo "${code:-000}"; return 1 ;; esac
+}
+
+ROUTE=""; PROXY=""; DETAIL=""
+
+C=$(reachable) && { ROUTE="direct"; DETAIL="HTTP $C"; }
+
+if [ -z "$ROUTE" ] && [ -n "$HOME_TS_IP" ]; then
+  P="http://${HOME_TS_IP}:${HOME_PROXY_PORT}"
+  C=$(reachable "$P") && { ROUTE="home-proxy"; PROXY="$P"; DETAIL="HTTP $C via $P"; }
+fi
+
+if [ -z "$ROUTE" ]; then
+  echo "claude-connect: NO WORKING ROUTE TO api.anthropic.com" >&2
+  echo "  direct      : failed" >&2
+  if [ -n "$HOME_TS_IP" ]; then
+    echo "  home proxy  : failed (${HOME_TS_IP}:${HOME_PROXY_PORT})" >&2
+    echo "  -> is the tunnel up? run: netladder" >&2
+  else
+    echo "  home proxy  : not configured (set HOME_TS_IP in /etc/default/netladder)" >&2
+  fi
+  echo "  Refusing to launch Claude on a route known to be broken." >&2
+  exit 1
+fi
+
+echo "claude-connect: route=$ROUTE ($DETAIL)" >&2
+[ "$ROUTE_ONLY" = 1 ] && exit 0
+
+if [ -n "$PROXY" ]; then
+  export HTTPS_PROXY="$PROXY" HTTP_PROXY="$PROXY"
+  export NO_PROXY="localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10"
+else
+  # Explicitly CLEAR any stale proxy: an inherited setting pointing at a dead
+  # tunnel is exactly how "Claude stopped working" happens after a link flaps.
+  unset HTTPS_PROXY HTTP_PROXY https_proxy http_proxy
+fi
+
+exec claude "$@"

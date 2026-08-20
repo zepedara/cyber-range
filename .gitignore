@@ -35,3 +35,5 @@ unfireable.csv
 # editor / OS
 .DS_Store
 *.swp
+# offline bundle is built locally, never committed - .deb/.tgz are large binaries
+tools/bootstrap/offline/
